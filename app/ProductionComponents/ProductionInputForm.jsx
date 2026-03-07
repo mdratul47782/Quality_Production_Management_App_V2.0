@@ -181,7 +181,7 @@ export default function ProductionInputForm({
         const present = prev.manpower_present != null ? String(prev.manpower_present) : "";
         setForm({
           buyer: prev.buyer || "", style: prev.style || "", Item: (prev.Item || "").toUpperCase(),
-          run_day: "", color_model: (prev.color_model || "").toUpperCase(), total_manpower: total,
+          run_day: prev.run_day != null ? String(prev.run_day) : "", color_model: (prev.color_model || "").toUpperCase(), total_manpower: total,
           manpower_present: present, manpower_absent: computeAbsent(total, present),
           working_hour: prev.working_hour != null ? String(prev.working_hour) : "",
           plan_quantity: prev.plan_quantity != null ? String(prev.plan_quantity) : "",
