@@ -1,4 +1,19 @@
 // app/api/style-wip/route.js
+//
+// CYCLE DETECTION LOGIC:
+//
+// Uptodate production = sum of achievedQty for the CURRENT UNBROKEN STREAK
+// of dates on which this line ran the SAME buyer + style combo —
+// regardless of color_model. All colors of the same style count together.
+//
+// Example on Line-1:
+//   Jan-01: style-123, buyer-X, color-BLUE  ← cycle starts
+//   Jan-02: style-123, buyer-X, color-RED   ← still same cycle (same buyer+style)
+//   Jan-03: style-456, buyer-Y, color-GREEN ← different style → streak broken
+//   Jan-04: style-123, buyer-X, color-BLUE  ← brand NEW streak (not Jan-01/02)
+//
+// color_model param is intentionally IGNORED for streak detection and aggregation.
+
 import { dbConnect } from "@/services/mongo";
 import TargetSetterHeader from "@/models/TargetSetterHeader";
 import { HourlyProductionModel } from "@/models/HourlyProduction-model";
@@ -10,16 +25,9 @@ function toNumberOrZero(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-/**
- * Normalise any date value to "YYYY-MM-DD" string.
- * Handles both full ISO strings ("2024-01-15T00:00:00.000Z") and plain
- * date strings ("2024-01-15") that may be stored in MongoDB.
- */
 function toDateString(value) {
   if (!value) return "";
-  // Already a plain date string
   if (/^\d{4}-\d{2}-\d{2}$/.test(String(value))) return String(value);
-  // Full ISO string or Date object
   const d = new Date(value);
   if (isNaN(d.getTime())) return String(value);
   return d.toISOString().slice(0, 10);
@@ -36,8 +44,8 @@ export async function GET(request) {
     const line              = searchParams.get("line");
     const buyer             = searchParams.get("buyer");
     const style             = searchParams.get("style");
-    const color_model       = searchParams.get("color_model") || null;
-    const dateParam         = searchParams.get("date"); // "YYYY-MM-DD"
+    const dateParam         = searchParams.get("date");
+    // color_model param accepted but IGNORED — uptodate is buyer+style level
 
     if (!factory || !assigned_building || !line || !buyer || !style || !dateParam) {
       return Response.json(
@@ -50,128 +58,135 @@ export async function GET(request) {
       );
     }
 
-    // Normalise the incoming date param just in case
     const date = toDateString(dateParam);
 
     // ─────────────────────────────────────────────────────────────────────────
-    // STEP 1 — Capacity doc
-    // color_model is intentionally excluded from the capacity key so that
-    // one capacity covers the entire style regardless of color.
-    // If you want per-color capacity, include color_model here too.
+    // STEP 1 — Capacity doc (buyer + style level, color-agnostic)
     // ─────────────────────────────────────────────────────────────────────────
-    const capacityQuery = { factory, assigned_building, line, buyer, style };
-    // NOTE: Do NOT add color_model here unless StyleCapacityModel stores it per-color.
-
-    const capacityDoc = await StyleCapacityModel.findOne(capacityQuery).lean();
-    const capacity    = capacityDoc ? toNumberOrZero(capacityDoc.capacity) : 0;
+    const capacityDoc = await StyleCapacityModel.findOne({
+      factory, assigned_building, line, buyer, style,
+    }).lean();
+    const capacity = capacityDoc ? toNumberOrZero(capacityDoc.capacity) : 0;
 
     // ─────────────────────────────────────────────────────────────────────────
-    // STEP 2 — Fetch ALL headers for this style up to `date`
-    //
-    // FIX: We fetch without a date filter first, then normalise & filter in JS.
-    // This avoids the string/ISO mismatch that caused $lte to silently fail.
+    // STEP 2 — Fetch ALL headers for this factory + building + line up to `date`
+    //          We need the full line timeline to detect streak breaks.
     // ─────────────────────────────────────────────────────────────────────────
-    const headerFilter = {
+    const allHeadersRaw = await TargetSetterHeader.find({
       factory,
       assigned_building,
       line,
-      buyer,
-      style,
-    };
-    if (color_model) headerFilter.color_model = color_model;
-
-    // Fetch without date filter — filter in JS after normalising dates
-    const allHeadersRaw = await TargetSetterHeader.find(headerFilter)
-      .select("_id date run_day color_model")
+    })
+      .select("_id date style buyer color_model")
       .lean();
 
-    // Normalise and filter: only headers whose date <= `date`
     const allHeaders = allHeadersRaw
       .map((h) => ({ ...h, _dateStr: toDateString(h.date) }))
       .filter((h) => h._dateStr <= date)
-      .sort((a, b) => (a._dateStr > b._dateStr ? -1 : 1)); // newest first
+      .sort((a, b) => (a._dateStr > b._dateStr ? -1 : 1)); // newest → oldest
 
     if (!allHeaders.length) {
-      return Response.json(
-        {
-          success: true,
-          data: {
-            factory,
-            capacity,
-            totalAchieved: 0,
-            wip: capacity,
-            rawWip: capacity,
-            capacityId: capacityDoc?._id || null,
-            debug: { reason: "no headers found up to date", date, color_model },
-          },
+      return Response.json({
+        success: true,
+        data: {
+          factory, capacity,
+          totalAchieved: 0, wip: capacity, rawWip: capacity,
+          capacityId: capacityDoc?._id || null,
+          cycleStartDate: null,
+          debug: { reason: "no headers for this line up to date" },
         },
-        { status: 200 }
-      );
+      }, { status: 200 });
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // STEP 3 — Detect current cycle start (most recent run_day = 1)
+    // STEP 3 — Group headers by date, then walk backwards to find the
+    //          unbroken streak for this buyer + style (all colors together).
+    //
+    // Rules:
+    //   • Date has ≥1 header matching buyer+style (any color) → part of streak
+    //   • Date has headers but NONE match buyer+style          → streak broken
+    //   • Date has NO headers at all (holiday/weekend)         → skip, keep going
     // ─────────────────────────────────────────────────────────────────────────
-    let cycleStartDate = null;
-
+    const headersByDate = {};
     for (const h of allHeaders) {
-      if (toNumberOrZero(h.run_day) === 1) {
-        cycleStartDate = h._dateStr;
+      if (!headersByDate[h._dateStr]) headersByDate[h._dateStr] = [];
+      headersByDate[h._dateStr].push(h);
+    }
+
+    // All dates that have at least one header, newest → oldest
+    const datesWithHeaders = Object.keys(headersByDate).sort().reverse();
+
+    // Match on buyer + style only — color_model is deliberately ignored
+    const matchesCombo = (h) =>
+      h.buyer === buyer &&
+      h.style === style;
+
+    const streakHeaderIds = [];
+    let cycleStartDate    = null;
+
+    for (const d of datesWithHeaders) {
+      const onDay      = headersByDate[d];
+      const matchOnDay = onDay.filter(matchesCombo);
+
+      if (matchOnDay.length > 0) {
+        // All matching headers on this day (all colors) count
+        for (const h of matchOnDay) streakHeaderIds.push(h._id);
+        cycleStartDate = d; // keeps updating → ends up as earliest streak date
+      } else {
+        // A different buyer/style was running → streak broken
         break;
       }
     }
 
-    // Fallback: no run_day=1 → use the oldest header's date
-    if (!cycleStartDate) {
-      cycleStartDate = allHeaders[allHeaders.length - 1]._dateStr;
-    }
-
-    // Only headers inside the current cycle
-    const cycleHeaders   = allHeaders.filter((h) => h._dateStr >= cycleStartDate);
-    const cycleHeaderIds = cycleHeaders.map((h) => h._id);
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // STEP 4 — Sum achievedQty from current-cycle headers ONLY
-    // ─────────────────────────────────────────────────────────────────────────
-    let totalAchieved = 0;
-
-    if (cycleHeaderIds.length > 0) {
-      const agg = await HourlyProductionModel.aggregate([
-        { $match: { headerId: { $in: cycleHeaderIds } } },
-        { $group: { _id: null, totalAchieved: { $sum: "$achievedQty" } } },
-      ]);
-
-      if (agg.length > 0) {
-        totalAchieved = toNumberOrZero(agg[0].totalAchieved);
-      }
-    }
-
-    const rawWip = capacity - totalAchieved;
-    const wip    = Math.max(rawWip, 0);
-
-    return Response.json(
-      {
+    if (!cycleStartDate || streakHeaderIds.length === 0) {
+      return Response.json({
         success: true,
         data: {
-          factory,
-          capacity,
-          totalAchieved,
-          wip,
-          rawWip,
-          capacityId:       capacityDoc?._id || null,
-          cycleStartDate,
-          cycleHeaderCount: cycleHeaderIds.length,
-          // debug info — remove in production if desired
+          factory, capacity,
+          totalAchieved: 0, wip: capacity, rawWip: capacity,
+          capacityId: capacityDoc?._id || null,
+          cycleStartDate: null,
           debug: {
-            date,
-            color_model,
-            allHeaderCount:   allHeaders.length,
-            cycleHeaderCount: cycleHeaderIds.length,
+            reason: "buyer+style combo not present in most-recent production days",
+            buyer, style, date,
           },
         },
+      }, { status: 200 });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // STEP 4 — Sum achievedQty from ALL streak headers (all colors combined)
+    // ─────────────────────────────────────────────────────────────────────────
+    const agg = await HourlyProductionModel.aggregate([
+      { $match: { headerId: { $in: streakHeaderIds } } },
+      { $group: { _id: null, totalAchieved: { $sum: "$achievedQty" } } },
+    ]);
+
+    const totalAchieved = agg.length > 0 ? toNumberOrZero(agg[0].totalAchieved) : 0;
+    const rawWip        = capacity - totalAchieved;
+    const wip           = Math.max(rawWip, 0);
+
+    return Response.json({
+      success: true,
+      data: {
+        factory,
+        capacity,
+        totalAchieved,
+        wip,
+        rawWip,
+        capacityId:       capacityDoc?._id || null,
+        cycleStartDate,
+        cycleHeaderCount: streakHeaderIds.length,
+        debug: {
+          date, buyer, style,
+          note: "color_model ignored — uptodate is buyer+style level",
+          cycleStartDate,
+          streakHeaderCount: streakHeaderIds.length,
+          totalLineDates:    datesWithHeaders.length,
+        },
       },
-      { status: 200 }
-    );
+    }, { status: 200 });
+
   } catch (error) {
     console.error("GET /api/style-wip error:", error);
     return Response.json(

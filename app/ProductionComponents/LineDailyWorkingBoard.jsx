@@ -1,4 +1,6 @@
 // app/ProductionComponents/LineDailyWorkingBoard.jsx
+// CHANGE: buildWipParams() no longer passes color_model.
+// Uptodate production is now buyer + style level (all colors combined).
 "use client";
 
 import { useEffect, useState } from "react";
@@ -25,10 +27,6 @@ function toNum(v, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 }
-
-// ===================================================================================
-// MAIN COMPONENT — accepts optional shared props from parent page
-// ===================================================================================
 
 export default function HourlyProductionBoard({
   selectedLine: propLine,
@@ -130,7 +128,6 @@ export default function HourlyProductionBoard({
         <div className="card-body p-3 space-y-2 text-xs">
           <div className="flex flex-wrap items-end gap-4">
 
-            {/* Factory */}
             <div className="space-y-1">
               <div className="text-[11px] font-semibold text-slate-1000 uppercase">Factory</div>
               <div className="badge bg-slate-100 border border-amber-500 text-[11px] font-semibold text-slate-900 px-3 py-2">
@@ -139,7 +136,6 @@ export default function HourlyProductionBoard({
               </div>
             </div>
 
-            {/* Building */}
             <div className="space-y-1">
               <div className="text-[11px] font-semibold text-slate-1000 uppercase">Building</div>
               <div className="badge bg-slate-100 border border-amber-500 text-[11px] font-semibold text-slate-900 px-3 py-2">
@@ -148,7 +144,7 @@ export default function HourlyProductionBoard({
               </div>
             </div>
 
-            {/* ── Line – hover dropdown ── */}
+            {/* Line hover dropdown */}
             <div className="space-y-1 relative group/line">
               <label className="block text-[11px] font-semibold text-slate-700 uppercase cursor-default">
                 Line
@@ -182,7 +178,7 @@ export default function HourlyProductionBoard({
               </div>
             </div>
 
-            {/* ── Date – hover calendar ── */}
+            {/* Date hover calendar */}
             <div className="space-y-1 relative group/date">
               <label className="block text-[11px] font-semibold text-slate-700 uppercase cursor-default">
                 Date
@@ -206,7 +202,6 @@ export default function HourlyProductionBoard({
               </div>
             </div>
 
-            {/* ── Sync indicator ── shown only when controlled by parent ── */}
             {propLine !== undefined && (
               <div className="space-y-1">
                 <div className="text-[11px] font-semibold text-slate-500 uppercase opacity-0 select-none">_</div>
@@ -216,7 +211,6 @@ export default function HourlyProductionBoard({
                 </div>
               </div>
             )}
-
           </div>
 
           {error && (
@@ -258,10 +252,6 @@ export default function HourlyProductionBoard({
   );
 }
 
-// ===================================================================================
-// CHILD: One hourly card per TargetSetterHeader
-// ===================================================================================
-
 function HourlyHeaderCard({ header, auth }) {
   const [selectedHour, setSelectedHour] = useState(1);
   const [achievedInput, setAchievedInput] = useState("");
@@ -292,45 +282,41 @@ function HourlyHeaderCard({ header, auth }) {
     auth?.user?.assigned_factory ||
     "";
 
-  // ✅ FIX: centralised helper — always includes color_model so the API
-  // can isolate the current run-cycle correctly (different colors = different cycles)
- const buildWipParams = () => {
-  const p = new URLSearchParams({
-    factory,
-    assigned_building: header.assigned_building,
-    line:  header.line,
-    buyer: header.buyer,
-    style: header.style,
-    date:  header.date,
-  });
-  // Only pass color_model if you want PER-COLOR WIP isolation.
-  // If capacity is stored per-style (not per-color), omit this.
-  if (header.color_model) p.set("color_model", header.color_model);
-  return p;
-};
+  // ✅ color_model intentionally excluded — uptodate is buyer+style level
+  const buildWipParams = () => {
+    return new URLSearchParams({
+      factory,
+      assigned_building: header.assigned_building,
+      line:  header.line,
+      buyer: header.buyer,
+      style: header.style,
+      date:  header.date,
+      // color_model NOT passed — all colors count together
+    });
+  };
 
   const refreshWip = async () => {
-  if (!header || !factory) return;
-  setWipLoading(true);
-  try {
-    const res = await fetch(
-      `/api/style-wip?${buildWipParams().toString()}`,
-      { cache: "no-store" }
-    );
-    const json = await res.json();
-    if (res.ok && json.success) {
-      setWipInfo(json.data);
-    } else {
-      console.warn("refreshWip failed:", json.message);
+    if (!header || !factory) return;
+    setWipLoading(true);
+    try {
+      const res = await fetch(
+        `/api/style-wip?${buildWipParams().toString()}`,
+        { cache: "no-store" }
+      );
+      const json = await res.json();
+      if (res.ok && json.success) {
+        setWipInfo(json.data);
+      } else {
+        console.warn("refreshWip failed:", json.message);
+        setWipInfo(null);
+      }
+    } catch (err) {
+      console.error("refreshWip error:", err);
       setWipInfo(null);
+    } finally {
+      setWipLoading(false);
     }
-  } catch (err) {
-    console.error("refreshWip error:", err);
-    setWipInfo(null);
-  } finally {
-    setWipLoading(false); // ← was missing in some error paths
-  }
-};
+  };
 
   useEffect(() => {
     setSelectedHour(1);
@@ -394,7 +380,6 @@ function HourlyHeaderCard({ header, auth }) {
         });
         if (factory) baseParams.set("factory", factory);
 
-        // Fetch capacity
         try {
           const resCap = await fetch(
             `/api/style-capacities?${baseParams.toString()}`,
@@ -411,7 +396,6 @@ function HourlyHeaderCard({ header, auth }) {
           if (err.name !== "AbortError") console.error(err);
         }
 
-        // ✅ FIX: fetch WIP with color_model — isolates cycles by color
         try {
           if (factory) {
             const resWip = await fetch(
@@ -439,7 +423,7 @@ function HourlyHeaderCard({ header, auth }) {
     header?.line,
     header?.buyer,
     header?.style,
-    header?.color_model, // ✅ re-fetch when color changes
+    // ✅ color_model removed from deps — no per-color re-fetch needed
     header?.date,
     header,
     factory,
@@ -753,7 +737,6 @@ function HourlyHeaderCard({ header, auth }) {
     <div className="card bg-base-100 border border-base-200 shadow-sm">
       <div className="card-body w-full p-3 space-y-3">
 
-        {/* Header summary */}
         <div className="flex flex-wrap items-start justify-between gap-3 border-b border-base-200 pb-2">
           <div className="space-y-1 text-xs">
             <div className="text-sm font-semibold tracking-wide text-slate-1000">
@@ -795,7 +778,6 @@ function HourlyHeaderCard({ header, auth }) {
           </div>
         )}
 
-        {/* Live data block */}
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] space-y-1.5">
           <div className="flex items-center justify-between border-b border-slate-200 pb-1">
             <span className="font-semibold text-slate-800">Live Data</span>
@@ -806,56 +788,32 @@ function HourlyHeaderCard({ header, auth }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <div>
               <span className="font-medium text-gray-700">Base Target / hr:</span>{" "}
-              <span className="font-semibold text-slate-900">
-                {formatNumber(baseTargetPerHour, 0)}
-              </span>
+              <span className="font-semibold text-slate-900">{formatNumber(baseTargetPerHour, 0)}</span>
             </div>
             <div>
-              <span className="font-medium text-slate-600">
-                Carry (shortfall vs base up to prev):
-              </span>{" "}
-              <span className="font-semibold text-amber-700">
-                {formatNumber(cumulativeShortfallVsBasePrevForSelected, 0)}
-              </span>
+              <span className="font-medium text-slate-600">Carry (shortfall vs base up to prev):</span>{" "}
+              <span className="font-semibold text-amber-700">{formatNumber(cumulativeShortfallVsBasePrevForSelected, 0)}</span>
             </div>
             <div className="sm:col-span-2">
               <span className="font-medium text-slate-600">Dynamic target this hour:</span>{" "}
-              <span className="font-semibold text-blue-700">
-                {formatNumber(dynamicTargetThisHour, 0)}
-              </span>
+              <span className="font-semibold text-blue-700">{formatNumber(dynamicTargetThisHour, 0)}</span>
             </div>
             <div className="sm:col-span-2">
               <span className="font-medium text-slate-600">Net variance vs base (to date):</span>{" "}
-              <span
-                className={`font-semibold ${
-                  netVarVsBaseToDateSelected >= 0 ? "text-green-700" : "text-red-700"
-                }`}
-              >
+              <span className={`font-semibold ${netVarVsBaseToDateSelected >= 0 ? "text-green-700" : "text-red-700"}`}>
                 {formatNumber(netVarVsBaseToDateSelected, 0)}
               </span>
             </div>
             <div className="sm:col-span-2">
-              <span className="font-medium text-slate-600">
-                Cumulative variance (prev vs dynamic):
-              </span>{" "}
-              <span
-                className={`font-semibold ${
-                  cumulativeVarianceDynamicPrev >= 0 ? "text-green-700" : "text-red-700"
-                }`}
-              >
+              <span className="font-medium text-slate-600">Cumulative variance (prev vs dynamic):</span>{" "}
+              <span className={`font-semibold ${cumulativeVarianceDynamicPrev >= 0 ? "text-green-700" : "text-red-700"}`}>
                 {formatNumber(cumulativeVarianceDynamicPrev, 0)}
               </span>
             </div>
             {previousRecord && (
               <div className="sm:col-span-2">
-                <span className="font-medium text-slate-600">
-                  Last hour variance (Δ vs dynamic):
-                </span>{" "}
-                <span
-                  className={`font-semibold ${
-                    previousVariance >= 0 ? "text-green-700" : "text-red-700"
-                  }`}
-                >
+                <span className="font-medium text-slate-600">Last hour variance (Δ vs dynamic):</span>{" "}
+                <span className={`font-semibold ${previousVariance >= 0 ? "text-green-700" : "text-red-700"}`}>
                   {formatNumber(previousVariance, 0)}
                 </span>
               </div>
@@ -863,7 +821,6 @@ function HourlyHeaderCard({ header, auth }) {
           </div>
         </div>
 
-        {/* Main input row */}
         <div className="overflow-x-auto">
           <table className="table table-xs w-full">
             <thead>
@@ -888,25 +845,19 @@ function HourlyHeaderCard({ header, auth }) {
                       <option key={hVal} value={hVal}>{hVal} hr</option>
                     ))}
                   </select>
-                  <p className="mt-1 text-[10px] text-gray-500">
-                    Current hour (1 ~ {totalWorkingHours})
-                  </p>
+                  <p className="mt-1 text-[10px] text-gray-500">Current hour (1 ~ {totalWorkingHours})</p>
                 </td>
                 <td className="px-2 align-top">
                   <div className="rounded border bg-gray-50 px-2 py-1 text-black text-[11px] border-amber-500">
                     {formatNumber(baseTargetPerHour, 0)}
                   </div>
-                  <p className="mt-1 text-[10px] text-gray-500 leading-tight">
-                    (MP × 60 × Plan% ÷ SMV)
-                  </p>
+                  <p className="mt-1 text-[10px] text-gray-500 leading-tight">(MP × 60 × Plan% ÷ SMV)</p>
                 </td>
                 <td className="px-2 align-top">
                   <div className="rounded border border-amber-500 bg-amber-50 px-2 py-1 text-black text-[11px]">
                     {formatNumber(dynamicTargetThisHour, 0)}
                   </div>
-                  <p className="mt-1 text-[10px] text-amber-700 leading-tight">
-                    Base + shortfall vs base (prev hours)
-                  </p>
+                  <p className="mt-1 text-[10px] text-amber-700 leading-tight">Base + shortfall vs base (prev hours)</p>
                 </td>
                 <td className="px-2 align-top">
                   <input
@@ -924,24 +875,19 @@ function HourlyHeaderCard({ header, auth }) {
                   <div className="rounded border border-amber-500 bg-gray-50 px-2 py-1 text-black text-[11px]">
                     {formatNumber(hourlyEfficiency)}
                   </div>
-                  <p className="mt-1 text-[10px] text-gray-500 leading-tight">
-                    (Output × SMV × 100) ÷ (MP × 60)
-                  </p>
+                  <p className="mt-1 text-[10px] text-gray-500 leading-tight">(Output × SMV × 100) ÷ (MP × 60)</p>
                 </td>
                 <td className="px-2 align-top">
                   <div className="rounded border border-amber-500 bg-gray-50 px-2 py-1 text-black text-[11px]">
                     {formatNumber(achieveEfficiency)}
                   </div>
-                  <p className="mt-1 text-[10px] text-gray-500 leading-tight">
-                    (Total produce min ÷ Total available min) × 100
-                  </p>
+                  <p className="mt-1 text-[10px] text-gray-500 leading-tight">(Total produce min ÷ Total available min) × 100</p>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        {/* Action buttons */}
         <div className="flex flex-wrap items-center justify-end gap-2 text-xs">
           <button
             type="button"
@@ -949,9 +895,7 @@ function HourlyHeaderCard({ header, auth }) {
             className="btn btn-xxs btn-outline border-amber-400 text-amber-800"
             disabled={!latestRecord || saving}
           >
-            {latestRecord
-              ? `Edit last hour (${latestRecord._hourNum})`
-              : "Edit last hour"}
+            {latestRecord ? `Edit last hour (${latestRecord._hourNum})` : "Edit last hour"}
           </button>
           <button
             type="button"
@@ -963,7 +907,6 @@ function HourlyHeaderCard({ header, auth }) {
           </button>
         </div>
 
-        {/* INPUT BLOCK */}
         <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] space-y-2">
           <div className="flex flex-wrap items-center gap-3">
             <span className="font-bold text-slate-900 whitespace-nowrap">Total Input :</span>
@@ -1030,11 +973,7 @@ function HourlyHeaderCard({ header, auth }) {
             </div>
             <div>
               <span className="text-slate-900 mr-1 font-bold">WIP :</span>
-              <span
-                className={`font-bold ${
-                  (wipInfo?.wip ?? 0) > 0 ? "text-amber-700" : "text-emerald-700"
-                }`}
-              >
+              <span className={`font-bold ${(wipInfo?.wip ?? 0) > 0 ? "text-amber-700" : "text-emerald-700"}`}>
                 {wipLoading || totalInputLoading
                   ? "..."
                   : wipInfo
@@ -1045,7 +984,6 @@ function HourlyHeaderCard({ header, auth }) {
           </div>
         </div>
 
-        {/* Posted hourly records */}
         <div className="mt-1">
           <div className="flex items-center justify-between text-xs mb-1.5">
             <h3 className="font-semibold text-[12px]">Posted hourly records</h3>
@@ -1057,9 +995,7 @@ function HourlyHeaderCard({ header, auth }) {
           </div>
 
           {recordsDecorated.length === 0 ? (
-            <p className="text-[11px] text-slate-500">
-              No hourly records saved yet for this header.
-            </p>
+            <p className="text-[11px] text-slate-500">No hourly records saved yet for this header.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="table table-xs w-full border-t">
@@ -1079,38 +1015,18 @@ function HourlyHeaderCard({ header, auth }) {
                   {recordsDecorated.map((rec) => (
                     <tr key={rec._id} className="border-b text-[11px]">
                       <td className="px-2 py-1">{rec._hourNum}</td>
-                      <td className="px-2 py-1">
-                        {formatNumber(rec._dynTargetRounded, 0)}
-                      </td>
+                      <td className="px-2 py-1">{formatNumber(rec._dynTargetRounded, 0)}</td>
                       <td className="px-2 py-1">{rec._achievedRounded}</td>
-                      <td
-                        className={`px-2 py-1 ${
-                          (rec._perHourVarDynamic ?? 0) >= 0
-                            ? "text-green-700"
-                            : "text-red-700"
-                        }`}
-                      >
+                      <td className={`px-2 py-1 ${(rec._perHourVarDynamic ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
                         {formatNumber(rec._perHourVarDynamic ?? 0, 0)}
                       </td>
-                      <td
-                        className={`px-2 py-1 ${
-                          (rec._netVarVsBaseToDate ?? 0) >= 0
-                            ? "text-green-700"
-                            : "text-red-700"
-                        }`}
-                      >
+                      <td className={`px-2 py-1 ${(rec._netVarVsBaseToDate ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
                         {formatNumber(rec._netVarVsBaseToDate ?? 0, 0)}
                       </td>
+                      <td className="px-2 py-1">{formatNumber(rec.hourlyEfficiency)}</td>
+                      <td className="px-2 py-1">{formatNumber(rec.totalEfficiency)} %</td>
                       <td className="px-2 py-1">
-                        {formatNumber(rec.hourlyEfficiency)}
-                      </td>
-                      <td className="px-2 py-1">
-                        {formatNumber(rec.totalEfficiency)} %
-                      </td>
-                      <td className="px-2 py-1">
-                        {rec.updatedAt
-                          ? new Date(rec.updatedAt).toLocaleTimeString()
-                          : "-"}
+                        {rec.updatedAt ? new Date(rec.updatedAt).toLocaleTimeString() : "-"}
                       </td>
                     </tr>
                   ))}
@@ -1120,23 +1036,13 @@ function HourlyHeaderCard({ header, auth }) {
                     <tr className="bg-amber-300 text-[12px] font-bold">
                       <td className="px-2 py-1">Total</td>
                       <td className="px-2 py-1">-</td>
-                      <td className="px-1 py-1">
-                        {formatNumber(totalAchievedAll, 0)}
-                      </td>
+                      <td className="px-1 py-1">{formatNumber(totalAchievedAll, 0)}</td>
                       <td className="px-2 py-1">-</td>
-                      <td
-                        className={`px-2 py-1 ${
-                          totalNetVarVsBaseToDate >= 0
-                            ? "text-green-700"
-                            : "text-red-700"
-                        }`}
-                      >
+                      <td className={`px-2 py-1 ${totalNetVarVsBaseToDate >= 0 ? "text-green-700" : "text-red-700"}`}>
                         {formatNumber(totalNetVarVsBaseToDate, 0)}
                       </td>
                       <td className="px-2 py-1">-</td>
-                      <td className="px-2 py-1">
-                        {formatNumber(totalAvgEffPercent)} %
-                      </td>
+                      <td className="px-2 py-1">{formatNumber(totalAvgEffPercent)} %</td>
                       <td className="px-2 py-1">-</td>
                     </tr>
                   </tfoot>
