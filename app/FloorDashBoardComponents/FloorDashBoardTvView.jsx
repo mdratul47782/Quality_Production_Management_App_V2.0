@@ -1,5 +1,4 @@
 // app/FloorDashBoardComponents/FloorDashBoardTvView.jsx
-// CHANGE: WIP fetch no longer passes color_model — uptodate is buyer+style level.
 "use client";
 
 import Link from "next/link";
@@ -160,7 +159,7 @@ export default function FloorDashBoardTvView() {
   const safeIndex  = sortedRows.length > 0 ? currentCardIndex % sortedRows.length : 0;
   const currentRow = sortedRows[safeIndex];
 
-  // ✅ TV: fetch WIP for current visible segment — buyer+style only, NO color_model
+  // fetch WIP for current visible segment
   useEffect(() => {
     if (!factory || !building || !date || !currentRow) { setCurrentWip(null); return; }
 
@@ -174,7 +173,6 @@ export default function FloorDashBoardTvView() {
     const controller = new AbortController();
     const fetchWip = async () => {
       try {
-        // ✅ color_model intentionally NOT passed
         const params = new URLSearchParams({
           factory,
           assigned_building: building,
@@ -304,7 +302,9 @@ export default function FloorDashBoardTvView() {
   );
 }
 
-/* ── TV CARD ── */
+/* ══════════════════════════════════════════════════════════
+   TV CARD
+══════════════════════════════════════════════════════════ */
 function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, date, refreshTick }) {
   const { line, quality, production } = lineData || {};
 
@@ -350,6 +350,10 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
   const [varianceLoading, setVarianceLoading]     = useState(false);
   const [varianceChartData, setVarianceChartData] = useState([]);
 
+  // ── Top 3 defects state ──
+  const [topDefectsForLine, setTopDefectsForLine] = useState([]);
+  const [defectsLoading, setDefectsLoading]       = useState(false);
+
   const getHourNum = (rec) => {
     const h = rec?.hour ?? rec?.hourIndex ?? rec?.hour_no ?? rec?.hourNo ?? rec?.hourNumber ?? rec?.index ?? null;
     const hn = toNumber(h, null);
@@ -371,6 +375,7 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
     return `${x}th`;
   };
 
+  // ── Fetch variance chart data ──
   useEffect(() => {
     if (!factory || !building || !line || !date) { setVarianceChartData([]); return; }
     const controller = new AbortController();
@@ -407,10 +412,58 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
     return () => controller.abort();
   }, [factory, building, line, date, headerId, refreshTick]);
 
+  // ── Fetch Top 3 Defects from hourly-inspections ──
+  useEffect(() => {
+    if (!factory || !building || !line || !date) { setTopDefectsForLine([]); return; }
+    const controller = new AbortController();
+    const fetchDefects = async () => {
+      try {
+        setDefectsLoading(true);
+        const dateIso = new Date(date + "T00:00:00").toISOString();
+        const params  = new URLSearchParams({
+          factory,
+          building,
+          date:  dateIso,
+          limit: "1000",
+        });
+        const res  = await fetch(`/api/hourly-inspections?${params.toString()}`, { cache: "no-store", signal: controller.signal });
+        const json = await res.json();
+        if (!res.ok || !json.success) { setTopDefectsForLine([]); return; }
+
+        // filter to current line only
+        const rows = (json.data || []).filter((r) => r.line === line);
+
+        // aggregate defects
+        const defectMap = {};
+        rows.forEach((row) => {
+          if (!Array.isArray(row.selectedDefects)) return;
+          row.selectedDefects.forEach((d) => {
+            if (!d?.name) return;
+            const qty = Number(d.quantity || 0);
+            defectMap[d.name] = (defectMap[d.name] || 0) + qty;
+          });
+        });
+
+        const top3 = Object.entries(defectMap)
+          .map(([name, qty]) => ({ name, qty }))
+          .sort((a, b) => b.qty - a.qty)
+          .slice(0, 3);
+
+        setTopDefectsForLine(top3);
+      } catch (e) {
+        if (e?.name === "AbortError") return;
+        setTopDefectsForLine([]);
+      } finally { setDefectsLoading(false); }
+    };
+    fetchDefects();
+    return () => controller.abort();
+  }, [factory, building, line, date, refreshTick]);
+
   return (
     <div className={`relative w-full rounded-3xl border-2 shadow-[0_0_80px_rgba(0,0,0,0.9)] overflow-hidden bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 ${isBehind ? "border-rose-500/70" : "border-emerald-500/70"}`}>
       <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(1200px_600px_at_0%_0%,rgba(45,212,191,0.25),transparent),radial-gradient(1000px_500px_at_100%_0%,rgba(56,189,248,0.25),transparent)]" />
       <div className="relative flex flex-col gap-3 p-3 md:p-4 lg:p-4 text-xs md:text-sm min-h-[380px] sm:min-h-[420px] lg:min-h-[460px]">
+
         {/* TOP meta row */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 border-b border-slate-800/70 pb-2">
           <div className="flex flex-wrap gap-1.5">
@@ -430,6 +483,7 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
 
         {/* MAIN AREA */}
         <div className="grid flex-1 min-h-0 gap-2 md:grid-cols-2 lg:grid-cols-12">
+
           {/* IMAGE */}
           <div className="md:col-span-1 lg:col-span-3 flex flex-col min-h-0">
             <div className="flex-1 min-h-[150px] sm:min-h-[170px] lg:min-h-0 rounded-2xl border border-cyan-500/70 bg-slate-950/95 overflow-hidden flex flex-col">
@@ -462,8 +516,10 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
             </div>
           </div>
 
-          {/* STATS + VARIANCE */}
+          {/* STATS + VARIANCE + TOP 3 DEFECTS */}
           <div className="md:col-span-2 lg:col-span-6 flex flex-col gap-2.5 min-h-0">
+
+            {/* Plan vs Achieved */}
             <div className="rounded-2xl border border-sky-700 bg-gradient-to-br from-sky-900/50 via-slate-950 to-slate-900/95 p-3 md:p-3.5 flex flex-col gap-2.5">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="uppercase tracking-wide text-sky-200">Plan vs Achieved</span>
@@ -477,12 +533,13 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
                   <TvStatBox label="Variance"         value={formatNumber(varianceQty, 0)}             accent={varianceQty >= 0 ? "text-emerald-200 border-emerald-500/80" : "text-rose-200 border-rose-500/80"} />
                   <TvStatBox label="Total Input"      value={formatNumber(totalInput || 0, 0)}         accent="text-cyan-200 border-cyan-500/80" />
                   <TvStatBox label="WIP"              value={formatNumber(wip || 0, 0)}                accent="text-fuchsia-200 border-fuchsia-500/80" />
-                  <TvStatBox label="Upto Date Achvd"  value={formatNumber(totalAchieved || 0, 0)}      accent="text-fuchsia-200 border-fuchsia-500/80" />
+                  <TvStatBox label="Upto Date Achieved"  value={formatNumber(totalAchieved || 0, 0)}      accent="text-fuchsia-200 border-fuchsia-500/80" />
                   <TvStatBox label={`Last Day (${prevWorkingDate || "-"})`} value={formatNumber(prevWorkingAchievedQty || 0, 0)} accent="text-slate-200 border-slate-500/80" />
                 </div>
               </div>
             </div>
 
+            {/* Production & Quality + Variance chart + Top 3 Defects */}
             <div className="rounded-2xl border border-amber-600 bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900/95 p-3 flex flex-col gap-2 min-h-0">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="uppercase tracking-wide text-amber-200">Production & Quality</span>
@@ -491,6 +548,8 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
                   <span className="badge border-sky-500/60 bg-sky-500/10 text-[11px] text-sky-100">P Hour: <span className="font-semibold">{prodHourLabel}</span></span>
                 </div>
               </div>
+
+              {/* KPI tiles */}
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
                 <KpiTile label="RFT%"         value={`${formatNumber(rft, 1)}%`}        tone="emerald" icon={Gauge} />
                 <KpiTile label="DEFECT RATE%" value={`${formatNumber(defectRate, 1)}%`} tone="red"     icon={AlertTriangle} />
@@ -498,22 +557,96 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
                 <KpiTile label="HOURLY EFF%"  value={`${formatNumber(hourlyEff, 1)}%`}  tone="sky"     icon={Gauge} />
                 <KpiTile label="AVG EFF%"     value={`${formatNumber(avgEff, 1)}%`}     tone="purple"  icon={TrendingUp} />
               </div>
-              <div className="mt-1 space-y-1 min-h-0">
-                <div className="flex items-center justify-between text-[11px] text-slate-200">
+
+              {/* ── Variance chart + Top 3 Defects side by side ── */}
+              <div className="mt-1 min-h-0">
+                <div className="flex items-center justify-between text-[11px] text-slate-200 mb-1">
                   <span className="uppercase tracking-wide text-amber-200">Hourly Variance</span>
                   {varianceLoading ? (
-                    <span className="flex items-center gap-1 text-[10px] text-slate-400"><span className="loading loading-spinner loading-xs" /> Loading...</span>
+                    <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                      <span className="loading loading-spinner loading-xs" /> Loading...
+                    </span>
                   ) : (
-                    <span className="text-[10px] text-slate-400">Green = ahead, Red = behind</span>
+                    <span className="text-[10px] text-slate-400">Green = ahead · Red = behind</span>
                   )}
                 </div>
-                <div className="h-24 sm:h-28 md:h-32 lg:h-36 w-full">
-                  <VarianceBarChart data={varianceChartData} />
+
+                <div className="flex gap-2 h-24 sm:h-28 md:h-32 lg:h-36">
+
+                  {/* Variance chart — takes remaining width */}
+                  <div className="flex-1 min-w-0">
+                    <VarianceBarChart data={varianceChartData} />
+                  </div>
+
+                  {/* ── Top 3 Defects panel ── */}
+                  <div className="w-[155px] sm:w-[170px] shrink-0 rounded-xl border border-rose-500/50 bg-rose-950/60 flex flex-col overflow-hidden">
+                    {/* Header */}
+                    <div className="px-2 py-1 flex items-center justify-between border-b border-rose-500/30 bg-rose-500/15">
+                      <span className="text-[9px] uppercase tracking-widest font-bold text-rose-300">
+                        Top 3 Defects
+                      </span>
+                      {defectsLoading && (
+                        <span className="loading loading-spinner loading-[10px] text-rose-400" />
+                      )}
+                    </div>
+
+                    {/* Defect rows */}
+                    <div className="flex-1 flex flex-col justify-around px-2 py-1.5 gap-1">
+                      {topDefectsForLine.length === 0 ? (
+                        <div className="flex items-center justify-center h-full text-[10px] text-slate-500 text-center">
+                          {defectsLoading ? "Loading…" : "No defects recorded"}
+                        </div>
+                      ) : (
+                        topDefectsForLine.map((d, idx) => {
+                          const palette = [
+                            { bar: "bg-rose-400",    text: "text-rose-200",    badge: "bg-rose-500/25 border-rose-400/50",    glow: "shadow-[0_0_6px_rgba(251,113,133,0.5)]" },
+                            { bar: "bg-amber-400",   text: "text-amber-200",   badge: "bg-amber-500/25 border-amber-400/50",   glow: "shadow-[0_0_6px_rgba(251,191,36,0.4)]"  },
+                            { bar: "bg-orange-400",  text: "text-orange-200",  badge: "bg-orange-500/25 border-orange-400/50", glow: "shadow-[0_0_6px_rgba(251,146,60,0.4)]"  },
+                          ];
+                          const c   = palette[idx] || palette[2];
+                          const max = topDefectsForLine[0]?.qty || 1;
+                          const pct = Math.round((d.qty / max) * 100);
+                          const rankLabels = ["1st", "2nd", "3rd"];
+
+                          return (
+                            <div key={d.name} className="flex flex-col gap-0.5">
+                              <div className="flex items-center justify-between gap-1">
+                                <div className="flex items-center gap-1 min-w-0">
+                                  <span className={`text-[8px] font-black uppercase ${c.text} shrink-0`}>
+                                    {rankLabels[idx]}
+                                  </span>
+                                  <span className={`text-[9px] font-semibold ${c.text} truncate`} title={d.name}>
+                                    {d.name}
+                                  </span>
+                                </div>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${c.badge} ${c.text} ${c.glow} shrink-0`}>
+                                  {d.qty}
+                                </span>
+                              </div>
+                              {/* Progress bar */}
+                              <div className="h-1.5 w-full rounded-full bg-slate-800/80 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${c.bar} transition-all duration-700`}
+                                  style={{ width: `${pct}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                  {/* ── end Top 3 Defects ── */}
+
                 </div>
               </div>
             </div>
           </div>
+          {/* end STATS column */}
+
         </div>
+        {/* end MAIN AREA */}
+
       </div>
     </div>
   );

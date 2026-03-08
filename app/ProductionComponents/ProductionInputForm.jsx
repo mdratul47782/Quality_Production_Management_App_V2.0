@@ -349,7 +349,7 @@ export default function ProductionInputForm({
               {prefillLoading ? (
                 <span className="badge badge-sm bg-slate-200 text-slate-800 border-0">Prefilling from previous day...</span>
               ) : prefillFromDate ? (
-                <span className="badge badge-sm bg-emerald-100 text-emerald-900 border-0">Auto filled from {prefillFromDate} (Run day is blank)</span>
+                <span className="badge badge-sm bg-emerald-100 text-emerald-900 border-0">Auto filled from {prefillFromDate} (Run day need to change)</span>
               ) : (
                 <span className="badge badge-sm bg-amber-100 text-amber-900 border-0">No previous target found for this line</span>
               )}

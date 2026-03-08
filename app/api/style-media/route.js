@@ -39,6 +39,21 @@ async function uploadToCloudinary(file, folder) {
   });
 }
 
+// ── Cloudinary URL থেকে public_id বের করে delete করে ──
+async function deleteFromCloudinary(url) {
+  if (!url || !url.includes("cloudinary.com")) return;
+  try {
+    // URL pattern: .../upload/v123456/folder/filename.ext
+    const matches = url.match(/\/upload\/(?:v\d+\/)?(.+)\.[^.]+$/);
+    if (!matches?.[1]) return;
+    const publicId = matches[1];
+    const resourceType = url.match(/\.(mp4|mov|webm|avi|mkv)$/i) ? "video" : "image";
+    await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
+  } catch (err) {
+    console.error("Cloudinary delete error:", err);
+  }
+}
+
 async function parseRequestBody(request) {
   const ct = request.headers.get("content-type") || "";
 
@@ -211,10 +226,29 @@ export async function PATCH(request) {
       return Response.json({ success: false, message: "id is required" }, { status: 400 });
     }
 
+    // ── পুরনো doc খুঁজুন ──
+    const existing = await StyleMediaModel.findById(id);
+
     let imageSrc = body.imageSrc || "";
     let videoSrc = body.videoSrc || "";
-    if (imageFile) imageSrc = await uploadToCloudinary(imageFile, "style-media/images");
-    if (videoFile) videoSrc = await uploadToCloudinary(videoFile, "style-media/videos");
+
+    if (imageFile) {
+      // নতুন file দিলে পুরনো Cloudinary image delete করুন
+      if (existing?.imageSrc) await deleteFromCloudinary(existing.imageSrc);
+      imageSrc = await uploadToCloudinary(imageFile, "style-media/images");
+    } else if (!body.imageSrc && existing?.imageSrc) {
+      // URL field খালি করা হয়েছে = Cloudinary থেকেও delete
+      await deleteFromCloudinary(existing.imageSrc);
+    }
+
+    if (videoFile) {
+      // নতুন file দিলে পুরনো Cloudinary video delete করুন
+      if (existing?.videoSrc) await deleteFromCloudinary(existing.videoSrc);
+      videoSrc = await uploadToCloudinary(videoFile, "style-media/videos");
+    } else if (!body.videoSrc && existing?.videoSrc) {
+      // URL field খালি করা হয়েছে = Cloudinary থেকেও delete
+      await deleteFromCloudinary(existing.videoSrc);
+    }
 
     const updated = await StyleMediaModel.findByIdAndUpdate(
       id,
@@ -262,6 +296,10 @@ export async function DELETE(request) {
     if (!deleted) {
       return Response.json({ success: false, message: "Not found" }, { status: 404 });
     }
+
+    // ── Cloudinary থেকেও delete করুন ──
+    if (deleted.imageSrc) await deleteFromCloudinary(deleted.imageSrc);
+    if (deleted.videoSrc) await deleteFromCloudinary(deleted.videoSrc);
 
     return Response.json({ success: true, message: "Deleted successfully" }, { status: 200 });
   } catch (err) {

@@ -496,19 +496,19 @@ export default function UserManualPage() {
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                 <p className="text-[12px] font-semibold text-white/90">
-                  ERP / IT Support
+                  ERP / MIS Support
                 </p>
                 <p className="mt-1 text-[12px] text-white/65">
-                  এখানে পরে আপনার অফিসিয়াল কন্টাক্ট বসিয়ে দিন।
+                  অফিসিয়াল কন্টাক্ট।
                 </p>
                 <div className="mt-3 space-y-2">
                   <div className="flex items-center gap-2 text-[12px] text-white/75">
                     <Phone size={16} className="text-white/60" />
-                    <span>Phone: __________________</span>
+                    <span>Phone: 112 </span>
                   </div>
                   <div className="flex items-center gap-2 text-[12px] text-white/75">
                     <Mail size={16} className="text-white/60" />
-                    <span>Email: __________________</span>
+                    <span>Email: ratul.mis@hkdo.com</span>
                   </div>
                 </div>
               </div>
