@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { dbConnect } from "@/services/mongo";
 import { machineModel } from "@/models/machine-model";
 
-// GET /api/machines?name=SINGLE NDL (PLAIN M/C)
 export async function GET(request) {
   try {
     await dbConnect();
@@ -19,7 +18,10 @@ export async function GET(request) {
     }
 
     const machines = await machineModel.find({}).lean();
-    return NextResponse.json({ success: true, data: machines });
+    return NextResponse.json({
+      success: true,
+      data: machines ?? [], // ✅ safe fallback
+    });
   } catch (err) {
     return NextResponse.json(
       { success: false, message: err?.message || "Failed to fetch" },
@@ -28,12 +30,11 @@ export async function GET(request) {
   }
 }
 
-// POST /api/machines — create or upsert floor data
 export async function POST(request) {
   try {
     await dbConnect();
     const body = await request.json();
-    const { machineName, stockQty, floorName, running, idle, repairable, damage } = body;
+    const { machineName, floorName, running, idle, repairable, damage } = body;
 
     if (!machineName || !floorName) {
       return NextResponse.json(
@@ -42,23 +43,29 @@ export async function POST(request) {
       );
     }
 
-    // Find existing machine
+    // ✅ Stock = Running + Idle + Repairable (damage NOT subtracted)
+    function calcStockQty(floors) {
+      return floors.reduce((total, f) => {
+        return total + (f.running ?? 0) + (f.idle ?? 0) + (f.repairable ?? 0);
+      }, 0);
+    }
+
     let machine = await machineModel.findOne({ machineName });
 
     if (!machine) {
-      // Create new machine with this floor
+      const floors = [
+        {
+          floorName,
+          running:    running    ?? 0,
+          idle:       idle       ?? 0,
+          repairable: repairable ?? 0,
+          damage:     damage     ?? 0,
+        },
+      ];
       machine = await machineModel.create({
         machineName,
-        stockQty: stockQty ?? 0,
-        floors: [
-          {
-            floorName,
-            running: running ?? 0,
-            idle: idle ?? 0,
-            repairable: repairable ?? 0,
-            damage: damage ?? 0,
-          },
-        ],
+        stockQty: calcStockQty(floors),
+        floors,
       });
       return NextResponse.json(
         { success: true, message: "Machine তৈরি হয়েছে।", data: machine },
@@ -66,30 +73,25 @@ export async function POST(request) {
       );
     }
 
-    // Update stock qty
-    if (stockQty !== undefined) {
-      machine.stockQty = stockQty;
-    }
-
-    // Check if floor already exists
     const floorIndex = machine.floors.findIndex((f) => f.floorName === floorName);
 
     if (floorIndex >= 0) {
-      // Update existing floor
-      machine.floors[floorIndex].running = running ?? machine.floors[floorIndex].running;
-      machine.floors[floorIndex].idle = idle ?? machine.floors[floorIndex].idle;
+      machine.floors[floorIndex].running    = running    ?? machine.floors[floorIndex].running;
+      machine.floors[floorIndex].idle       = idle       ?? machine.floors[floorIndex].idle;
       machine.floors[floorIndex].repairable = repairable ?? machine.floors[floorIndex].repairable;
-      machine.floors[floorIndex].damage = damage ?? machine.floors[floorIndex].damage;
+      machine.floors[floorIndex].damage     = damage     ?? machine.floors[floorIndex].damage;
     } else {
-      // Add new floor entry
       machine.floors.push({
         floorName,
-        running: running ?? 0,
-        idle: idle ?? 0,
+        running:    running    ?? 0,
+        idle:       idle       ?? 0,
         repairable: repairable ?? 0,
-        damage: damage ?? 0,
+        damage:     damage     ?? 0,
       });
     }
+
+    // ✅ Always recalculate across ALL floors server-side
+    machine.stockQty = calcStockQty(machine.floors);
 
     await machine.save();
     return NextResponse.json({

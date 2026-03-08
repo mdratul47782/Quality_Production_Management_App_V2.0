@@ -16,6 +16,7 @@ import {
   Table2,
   GitCompare,
   FileText,
+  Factory
 } from "lucide-react";
 
 export default function SideNavbar() {
@@ -50,6 +51,8 @@ export default function SideNavbar() {
     { href: "/QualitySummaryTable", icon: Table2 },
 
     { href: "/style-media-register", icon: FileText },
+    { href: "/IEDepartment/MachineInventory", icon: Factory },
+
   ];
 
   // ✅ NEW: hide buttons based on tracker type

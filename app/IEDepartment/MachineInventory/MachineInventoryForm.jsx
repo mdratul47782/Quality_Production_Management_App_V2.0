@@ -28,6 +28,12 @@ const FLOOR_OPTIONS = [
   { value: "B-4", label: "B-4" },
   { value: "A-5", label: "A-5" },
   { value: "B-5", label: "B-5" },
+  { value: "A-6", label: "A-6" },
+  { value: "B-6", label: "B-6" },
+  { value: "C-4", label: "C-4" },
+  { value: "K-3", label: "K-3" },
+  { value: "SMD/CAD", label: "SMD/CAD" },
+  { value: "Others", label: "Others" },
 ];
 
 const EMPTY_FLOOR_DATA = {
@@ -39,71 +45,39 @@ const EMPTY_FLOOR_DATA = {
 
 export default function MachineInventoryForm({ onSaveSuccess }) {
   const [machineName, setMachineName] = useState("");
-  const [stockQty, setStockQty] = useState("");
-  const [floorName, setFloorName] = useState("");
-  const [floorData, setFloorData] = useState({ ...EMPTY_FLOOR_DATA });
+  const [floorName, setFloorName]     = useState("");
+  const [floorData, setFloorData]     = useState({ ...EMPTY_FLOOR_DATA });
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading]         = useState(false);
   const [fetchingFloor, setFetchingFloor] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState(null); // {type:'success'|'error', msg}
+  const [saving, setSaving]           = useState(false);
+  const [toast, setToast]             = useState(null);
 
-  // ─── Show toast ───────────────────────────────────────────
   const showToast = (type, msg) => {
     setToast({ type, msg });
     setTimeout(() => setToast(null), 3500);
   };
 
-  // ─── Load machine data when machine name changes ───────────
-  const loadMachineData = useCallback(async (name) => {
-    if (!name) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/machines?name=${encodeURIComponent(name)}`);
-      const json = await res.json();
-      if (json.success && json.data) {
-        setStockQty(json.data.stockQty ?? "");
-        // if current floor is already selected, load that floor too
-        if (floorName) {
-          const existing = json.data.floors?.find((f) => f.floorName === floorName);
-          if (existing) {
-            setFloorData({
-              running: existing.running ?? "",
-              idle: existing.idle ?? "",
-              repairable: existing.repairable ?? "",
-              damage: existing.damage ?? "",
-            });
-          } else {
-            setFloorData({ ...EMPTY_FLOOR_DATA });
-          }
-        }
-      } else {
-        setStockQty("");
-        setFloorData({ ...EMPTY_FLOOR_DATA });
-      }
-    } catch {
-      setStockQty("");
-    } finally {
-      setLoading(false);
-    }
-  }, [floorName]);
+  // ✅ Stock preview = Running + Idle + Repairable (no damage subtraction)
+  const previewStock =
+    (Number(floorData.running) || 0) +
+    (Number(floorData.idle) || 0) +
+    (Number(floorData.repairable) || 0);
 
-  // ─── Load floor-specific data ──────────────────────────────
   const loadFloorData = useCallback(async (name, floor) => {
     if (!name || !floor) return;
     setFetchingFloor(true);
     try {
-      const res = await fetch(`/api/machines?name=${encodeURIComponent(name)}`);
+      const res  = await fetch(`/api/machines?name=${encodeURIComponent(name)}`);
       const json = await res.json();
       if (json.success && json.data) {
-        setStockQty(json.data.stockQty ?? "");
         const existing = json.data.floors?.find((f) => f.floorName === floor);
         if (existing) {
           setFloorData({
-            running: existing.running ?? "",
-            idle: existing.idle ?? "",
+            running:    existing.running    ?? "",
+            idle:       existing.idle       ?? "",
             repairable: existing.repairable ?? "",
-            damage: existing.damage ?? "",
+            damage:     existing.damage     ?? "",
           });
         } else {
           setFloorData({ ...EMPTY_FLOOR_DATA });
@@ -118,12 +92,25 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
     }
   }, []);
 
+  const loadMachineData = useCallback(async (name) => {
+    if (!name) return;
+    setLoading(true);
+    try {
+      const res  = await fetch(`/api/machines?name=${encodeURIComponent(name)}`);
+      const json = await res.json();
+      if (!json.success || !json.data) {
+        setFloorData({ ...EMPTY_FLOOR_DATA });
+      }
+    } catch {
+      // silent
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (machineName) loadMachineData(machineName);
-    else {
-      setStockQty("");
-      setFloorData({ ...EMPTY_FLOOR_DATA });
-    }
+    else setFloorData({ ...EMPTY_FLOOR_DATA });
   }, [machineName]);
 
   useEffect(() => {
@@ -131,7 +118,6 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
     else if (!floorName) setFloorData({ ...EMPTY_FLOOR_DATA });
   }, [floorName, machineName]);
 
-  // ─── Submit ────────────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!machineName || !floorName) {
@@ -145,12 +131,11 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           machineName,
-          stockQty: Number(stockQty) || 0,
           floorName,
-          running: Number(floorData.running) || 0,
-          idle: Number(floorData.idle) || 0,
+          running:    Number(floorData.running)    || 0,
+          idle:       Number(floorData.idle)       || 0,
           repairable: Number(floorData.repairable) || 0,
-          damage: Number(floorData.damage) || 0,
+          damage:     Number(floorData.damage)     || 0,
         }),
       });
       const json = await res.json();
@@ -169,7 +154,6 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
 
   const handleReset = () => {
     setMachineName("");
-    setStockQty("");
     setFloorName("");
     setFloorData({ ...EMPTY_FLOOR_DATA });
   };
@@ -198,9 +182,7 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
             <div className="h-8 w-1 bg-cyan-400 rounded-full" />
             <span className="text-xs tracking-[0.3em] text-cyan-400 uppercase">IE Department</span>
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">
-            Machine Inventory
-          </h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Machine Inventory</h1>
           <p className="text-slate-500 text-sm mt-1">Floor-wise machine status update করুন</p>
         </div>
 
@@ -209,10 +191,10 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
           onSubmit={handleSubmit}
           className="bg-[#161b27] border border-slate-800 rounded-2xl overflow-hidden shadow-2xl"
         >
-          {/* Card Header Bar */}
           <div className="h-1 w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500" />
 
           <div className="p-7 space-y-6">
+
             {/* Machine Name */}
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">
@@ -229,28 +211,25 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
-                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">
-                  ▾
-                </div>
+                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">▾</div>
               </div>
             </div>
 
-            {/* Stock Qty */}
+            {/* Stock Preview (this floor only — server sums all floors) */}
             <div>
               <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">
-                Stock Quantity
+                Stock Quantity{" "}
                 {loading && (
                   <span className="ml-2 text-cyan-400 normal-case tracking-normal animate-pulse">লোড হচ্ছে...</span>
                 )}
+                <span className="ml-2 text-slate-600 normal-case tracking-normal font-normal">
+                  (Running + Idle + Repairable)
+                </span>
               </label>
-              <input
-                type="number"
-                min="0"
-                value={stockQty}
-                onChange={(e) => setStockQty(e.target.value)}
-                placeholder="মোট স্টক পরিমাণ"
-                className="w-full bg-[#0f1117] border border-slate-700 text-white rounded-lg px-4 py-3 text-sm focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 transition-colors placeholder:text-slate-600"
-              />
+              <div className="w-full bg-[#0a0d14] border border-slate-700 text-cyan-300 rounded-lg px-4 py-3 text-sm font-bold flex items-center justify-between">
+                <span>{previewStock}</span>
+                <span className="text-slate-600 text-xs font-normal">this floor preview · server sums all floors</span>
+              </div>
             </div>
 
             {/* Divider */}
@@ -277,9 +256,7 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
                     <option key={f.value} value={f.value}>{f.label}</option>
                   ))}
                 </select>
-                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">
-                  ▾
-                </div>
+                <div className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-500">▾</div>
               </div>
             </div>
 
@@ -291,13 +268,10 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
             >
               {/* Running */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-widest mb-2 text-emerald-400">
-                  Running
-                </label>
+                <label className="block text-xs font-semibold uppercase tracking-widest mb-2 text-emerald-400">Running</label>
                 <div className="relative">
                   <input
-                    type="number"
-                    min="0"
+                    type="number" min="0"
                     value={floorData.running}
                     onChange={(e) => setFloorData((p) => ({ ...p, running: e.target.value }))}
                     placeholder="0"
@@ -309,13 +283,10 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
 
               {/* Idle */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-widest mb-2 text-amber-400">
-                  Idle
-                </label>
+                <label className="block text-xs font-semibold uppercase tracking-widest mb-2 text-amber-400">Idle</label>
                 <div className="relative">
                   <input
-                    type="number"
-                    min="0"
+                    type="number" min="0"
                     value={floorData.idle}
                     onChange={(e) => setFloorData((p) => ({ ...p, idle: e.target.value }))}
                     placeholder="0"
@@ -327,13 +298,10 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
 
               {/* Repairable */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-widest mb-2 text-orange-400">
-                  Repairable
-                </label>
+                <label className="block text-xs font-semibold uppercase tracking-widest mb-2 text-orange-400">Repairable</label>
                 <div className="relative">
                   <input
-                    type="number"
-                    min="0"
+                    type="number" min="0"
                     value={floorData.repairable}
                     onChange={(e) => setFloorData((p) => ({ ...p, repairable: e.target.value }))}
                     placeholder="0"
@@ -345,13 +313,10 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
 
               {/* Damage */}
               <div>
-                <label className="block text-xs font-semibold uppercase tracking-widest mb-2 text-red-400">
-                  Damage
-                </label>
+                <label className="block text-xs font-semibold uppercase tracking-widest mb-2 text-red-400">Damage</label>
                 <div className="relative">
                   <input
-                    type="number"
-                    min="0"
+                    type="number" min="0"
                     value={floorData.damage}
                     onChange={(e) => setFloorData((p) => ({ ...p, damage: e.target.value }))}
                     placeholder="0"
@@ -368,10 +333,10 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
                 <p className="text-xs text-slate-500 uppercase tracking-widest mb-3">Summary Preview</p>
                 <div className="flex flex-wrap gap-3">
                   {[
-                    { label: "Running", val: floorData.running, color: "text-emerald-400" },
-                    { label: "Idle", val: floorData.idle, color: "text-amber-400" },
-                    { label: "Repairable", val: floorData.repairable, color: "text-orange-400" },
-                    { label: "Damage", val: floorData.damage, color: "text-red-400" },
+                    { label: "Running",    val: floorData.running,    color: "text-emerald-400" },
+                    { label: "Idle",       val: floorData.idle,       color: "text-amber-400"   },
+                    { label: "Repairable", val: floorData.repairable, color: "text-orange-400"  },
+                    { label: "Damage",     val: floorData.damage,     color: "text-red-400"     },
                   ].map(({ label, val, color }) => (
                     <div key={label} className="flex items-center gap-1.5">
                       <span className={`font-bold text-lg ${color}`}>{val || 0}</span>
@@ -379,10 +344,8 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
                     </div>
                   ))}
                   <div className="flex items-center gap-1.5 ml-auto">
-                    <span className="text-slate-300 font-bold text-lg">
-                      {(Number(floorData.running) || 0) + (Number(floorData.idle) || 0) + (Number(floorData.repairable) || 0) + (Number(floorData.damage) || 0)}
-                    </span>
-                    <span className="text-slate-500 text-xs">Total</span>
+                    <span className="text-slate-300 font-bold text-lg">{previewStock}</span>
+                    <span className="text-slate-500 text-xs">Stock (this floor)</span>
                   </div>
                 </div>
               </div>
@@ -408,7 +371,6 @@ export default function MachineInventoryForm({ onSaveSuccess }) {
           </div>
         </form>
 
-        {/* Helper text */}
         <p className="text-center text-slate-600 text-xs mt-4">
           Machine ও Floor select করলে বিদ্যমান data স্বয়ংক্রিয়ভাবে লোড হবে।
         </p>
