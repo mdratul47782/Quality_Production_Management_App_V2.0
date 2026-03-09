@@ -16,7 +16,8 @@ import {
   Table2,
   GitCompare,
   FileText,
-  Factory
+  Factory,
+  PanelLeftRightDashed
 } from "lucide-react";
 
 export default function SideNavbar() {
@@ -52,6 +53,7 @@ export default function SideNavbar() {
 
     { href: "/style-media-register", icon: FileText },
     { href: "/IEDepartment/MachineInventory", icon: Factory },
+    { href: "/IEDepartment/LineLayout", icon: PanelLeftRightDashed },
 
   ];
 
