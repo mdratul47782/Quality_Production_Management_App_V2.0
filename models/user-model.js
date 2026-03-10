@@ -28,7 +28,7 @@ const userSchema = new mongoose.Schema(
     tracker_type: {
       type: String,
       trim: true,
-      enum: ["", "Quality", "Production"],
+      enum: ["", "Quality", "Production","IE"],
       default: "",
       required: function () {
         return this.role === "Data tracker";
@@ -63,7 +63,7 @@ userSchema.index(
     unique: true,
     partialFilterExpression: {
       role: "Data tracker",
-      tracker_type: { $in: ["Quality", "Production"] },
+      tracker_type: { $in: ["Quality", "Production","IE"] },
     },
   }
 );
