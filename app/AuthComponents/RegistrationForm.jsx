@@ -12,6 +12,7 @@ const ROLE_OPTIONS = ["Management", "Data tracker", "Developer", "Others"];
 const TRACKER_TYPE_OPTIONS = [
   { label: "Quality Data Tracker", value: "Quality" },
   { label: "Production Data Tracker", value: "Production" },
+  {label: "IE Data Tracker", value: "IE" },
 ];
 
 export default function RegistrationForm() {
