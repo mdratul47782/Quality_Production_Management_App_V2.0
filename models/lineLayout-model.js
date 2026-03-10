@@ -16,6 +16,7 @@ const processEntrySchema = new mongoose.Schema({
 
 const lineLayoutSchema = new mongoose.Schema(
   {
+    factory:        { type: String, default: "" },   // e.g. "K-2"
     floor:          { type: String, required: true },
     lineNo:         { type: String, required: true },
     buyer:          { type: String, required: true },

@@ -10,17 +10,19 @@ function calcTargets(smv, planEfficiency, operator, workingHours) {
   return { oneHourTarget: oneHour, dailyTarget: daily };
 }
 
-// GET /api/line-layouts?floor=B-3&lineNo=01
+// GET /api/line-layouts?factory=K-2&floor=B-3&lineNo=01
 export async function GET(request) {
   try {
     await dbConnect();
     const { searchParams } = new URL(request.url);
-    const floor  = searchParams.get("floor");
-    const lineNo = searchParams.get("lineNo");
+    const factory = searchParams.get("factory");   // ← NEW
+    const floor   = searchParams.get("floor");
+    const lineNo  = searchParams.get("lineNo");
 
     const query = {};
-    if (floor)  query.floor  = floor;
-    if (lineNo) query.lineNo = lineNo;
+    if (factory) query.factory = factory;
+    if (floor)   query.floor   = floor;
+    if (lineNo)  query.lineNo  = lineNo;
 
     const layouts = await lineLayoutModel.find(query).sort({ createdAt: -1 }).lean();
     return NextResponse.json({ success: true, data: layouts ?? [] });
@@ -35,6 +37,7 @@ export async function POST(request) {
     await dbConnect();
     const body = await request.json();
     const {
+      factory,                                         // ← NEW
       floor, lineNo, buyer, style, item,
       smv, planEfficiency, operator, helper, seamSealing,
       workingHours, sketchUrl,
@@ -51,6 +54,7 @@ export async function POST(request) {
     const { oneHourTarget, dailyTarget } = calcTargets(smv, planEfficiency, operator, workingHours);
 
     const layout = await lineLayoutModel.create({
+      factory:  factory || "",                         // ← NEW
       floor, lineNo, buyer, style, item,
       smv, planEfficiency, operator, helper, seamSealing,
       manpower, workingHours: workingHours || 8,

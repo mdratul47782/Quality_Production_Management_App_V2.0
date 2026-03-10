@@ -3,34 +3,38 @@
 
 import React, { useState, useEffect } from "react";
 
+// ─── FIXED: dbKey now matches exactly what the form saves to DB ───────────────
+// Form FLOOR_OPTIONS values:  "A-2","B-2","A-3","B-3","A-4","B-4","A-5","B-5",
+//                             "A-6","B-6","C-4","K-3","SMD/CAD","Others","New"
 const FLOOR_COLS = [
-  { floor: "A2",      dbKey: "A-2",     runKey: "A2_run",     idleKey: "A2_idle"     },
-  { floor: "A3",      dbKey: "A-3",     runKey: "A3_run",     idleKey: "A3_idle"     },
-  { floor: "A4",      dbKey: "A-4",     runKey: "A4_run",     idleKey: "A4_idle"     },
-  { floor: "A5",      dbKey: "A-5",     runKey: "A5_run",     idleKey: "A5_idle"     },
-  { floor: "B2",      dbKey: "B-2",     runKey: "B2_run",     idleKey: "B2_idle"     },
-  { floor: "B3",      dbKey: "B-3",     runKey: "B3_run",     idleKey: "B3_idle"     },
-  { floor: "B4",      dbKey: "B-4",     runKey: "B4_run",     idleKey: "B4_idle"     },
-  { floor: "B5",      dbKey: "B-5",     runKey: "B5_run",     idleKey: "B5_idle"     },
-  { floor: "A6",      dbKey: "A-6",     runKey: "A6_run",     idleKey: "A6_idle"     },
-  { floor: "B6",      dbKey: "B-6",     runKey: "B6_run",     idleKey: "B6_idle"     },
-  { floor: "C4",      dbKey: "C-4",     runKey: "C4_run",     idleKey: "C4_idle"     },
-  { floor: "K3",      dbKey: "K-3",     runKey: "K3_run",     idleKey: "K3_idle"     },
-  { floor: "SMD/CAD", dbKey: "SMD/CAD", runKey: "SMDCAD_run", idleKey: "SMDCAD_idle" },
-  { floor: "Others",  dbKey: "Others",  runKey: "Others_run", idleKey: "Others_idle" },
+  { floor: "A-2",     dbKey: "A-2",     runKey: "A2_run",      idleKey: "A2_idle"      },
+  { floor: "A-3",     dbKey: "A-3",     runKey: "A3_run",      idleKey: "A3_idle"      },
+  { floor: "A-4",     dbKey: "A-4",     runKey: "A4_run",      idleKey: "A4_idle"      },
+  { floor: "A-5",     dbKey: "A-5",     runKey: "A5_run",      idleKey: "A5_idle"      },
+  { floor: "B-2",     dbKey: "B-2",     runKey: "B2_run",      idleKey: "B2_idle"      },
+  { floor: "B-3",     dbKey: "B-3",     runKey: "B3_run",      idleKey: "B3_idle"      },
+  { floor: "B-4",     dbKey: "B-4",     runKey: "B4_run",      idleKey: "B4_idle"      },
+  { floor: "B-5",     dbKey: "B-5",     runKey: "B5_run",      idleKey: "B5_idle"      },
+  { floor: "A-6",     dbKey: "A-6",     runKey: "A6_run",      idleKey: "A6_idle"      },  // ← FIXED
+  { floor: "B-6",     dbKey: "B-6",     runKey: "B6_run",      idleKey: "B6_idle"      },  // ← FIXED
+  { floor: "C-4",     dbKey: "C-4",     runKey: "C4_run",      idleKey: "C4_idle"      },  // ← FIXED (was "C-4" → "C4" mismatch)
+  { floor: "K-3",     dbKey: "K-3",     runKey: "K3_run",      idleKey: "K3_idle"      },  // ← FIXED (was "K3" → "K-3" mismatch)
+  { floor: "SMD/CAD", dbKey: "SMD/CAD", runKey: "SMDCAD_run",  idleKey: "SMDCAD_idle"  },  // ← FIXED (was "SMD/Cad")
+  { floor: "Others",  dbKey: "Others",  runKey: "Others_run",  idleKey: "Others_idle"  },
+  { floor: "New",     dbKey: "New",     runKey: "New_run",     idleKey: "New_idle"     },  // ← ADDED missing floor
 ];
 
 function flattenMachine(doc) {
   const row = {
     _id:         doc._id,
     slNo:        doc.slNo ?? "—",
-    machineName: doc.machineName ?? "—",
+    machineName: doc.machineName,
     stockQty:    doc.stockQty ?? 0,
     repairable:  0,
     damage:      0,
   };
   FLOOR_COLS.forEach(({ dbKey, runKey, idleKey }) => {
-    const found = (doc.floors ?? []).find((f) => f.floorName === dbKey); // ✅ safe fallback
+    const found = doc.floors?.find((f) => f.floorName === dbKey);
     row[runKey]  = found?.running    ?? 0;
     row[idleKey] = found?.idle       ?? 0;
     if (found) {
@@ -52,7 +56,7 @@ const IdleCell = ({ v }) => (
   </td>
 );
 
-export default function MachineInventoryTable({ refreshKey }) {
+export default function MachineInventoryTable({ refreshKey, factory = "" }) {
   const [rows, setRows]       = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
@@ -63,22 +67,18 @@ export default function MachineInventoryTable({ refreshKey }) {
     async function load() {
       setLoading(true);
       try {
-        const res  = await fetch("/api/machines");
+        const qs  = factory ? `?factory=${encodeURIComponent(factory)}` : "";
+        const res  = await fetch(`/api/machines${qs}`);
         const json = await res.json();
-        if (json.success && Array.isArray(json.data)) { // ✅ Array.isArray check
-          setRows(json.data.map(flattenMachine));
-        } else {
-          setRows([]); // ✅ safe fallback
-        }
+        if (json.success) setRows(json.data.map(flattenMachine));
       } catch (e) {
         console.error(e);
-        setRows([]); // ✅ safe fallback on network error
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, [refreshKey]);
+  }, [refreshKey, factory]);
 
   const filtered = rows
     .filter((r) => r.machineName.toLowerCase().includes(search.toLowerCase()))
@@ -113,11 +113,11 @@ export default function MachineInventoryTable({ refreshKey }) {
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-b border-slate-800">
         <div className="flex flex-wrap gap-2">
           {[
-            { label: "Stock",      val: totalStock,      color: "bg-slate-800 text-slate-200"       },
-            { label: "Running",    val: totalRunning,    color: "bg-emerald-950 text-emerald-300"    },
-            { label: "Idle",       val: totalIdle,       color: "bg-amber-950 text-amber-300"        },
-            { label: "Repairable", val: totalRepairable, color: "bg-orange-950 text-orange-300"      },
-            { label: "Damage",     val: totalDamage,     color: "bg-red-950 text-red-300"            },
+            { label: "Stock",      val: totalStock,      color: "bg-slate-800 text-slate-200"    },
+            { label: "Running",    val: totalRunning,    color: "bg-emerald-950 text-emerald-300" },
+            { label: "Idle",       val: totalIdle,       color: "bg-amber-950 text-amber-300"    },
+            { label: "Repairable", val: totalRepairable, color: "bg-orange-950 text-orange-300"  },
+            { label: "Damage",     val: totalDamage,     color: "bg-red-950 text-red-300"        },
           ].map(({ label, val, color }) => (
             <span key={label} className={`${color} text-xs font-semibold px-3 py-1 rounded-full`}>
               {label}: {val}
@@ -144,7 +144,7 @@ export default function MachineInventoryTable({ refreshKey }) {
             কোনো ডেটা পাওয়া যায়নি।
           </div>
         ) : (
-          <table className="w-full border-collapse text-xs" style={{ minWidth: "1400px" }}>
+          <table className="w-full border-collapse text-xs" style={{ minWidth: "1600px" }}>
             <thead className="sticky top-0 z-10">
 
               {/* Row 1 — group headers */}
@@ -191,8 +191,7 @@ export default function MachineInventoryTable({ refreshKey }) {
                 <tr key={row._id}
                   className={`border-b border-slate-800 transition-colors hover:bg-slate-800/30 ${
                     idx % 2 === 0 ? "bg-[#0f1117]" : "bg-[#131720]"
-                  }`}
-                >
+                  }`}>
                   <td className="text-center border-r border-slate-700/50 px-2 py-1.5 text-slate-500">{row.slNo}</td>
                   <td className="border-r border-slate-700/50 px-2 py-1.5 text-slate-200 whitespace-nowrap font-medium">{row.machineName}</td>
                   <td className="text-center border-r border-slate-700/50 px-2 py-1.5 text-white font-bold">{row.stockQty}</td>
