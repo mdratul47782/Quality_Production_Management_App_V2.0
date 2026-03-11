@@ -28,7 +28,7 @@ const userSchema = new mongoose.Schema(
     tracker_type: {
       type: String,
       trim: true,
-      enum: ["", "Quality", "Production","IE"],
+      enum: ["", "Quality", "Production","IE","Maintenance"], // "" means not assigned yet
       default: "",
       required: function () {
         return this.role === "Data tracker";

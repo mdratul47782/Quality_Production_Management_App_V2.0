@@ -29,24 +29,26 @@ const NAV_ITEMS = [
   { href: "/QualityInput",                  icon: ClipboardList,         group: "quality"    },
   { href: "/QualitySummaryTable",           icon: Table2,                group: "quality"    },
   { href: "/style-media-register",          icon: FileText,              group: "tracker"    },
-  { href: "/IEDepartment/MachineInventory", icon: Factory,               group: "ie"         },
+  { href: "/IEDepartment/MachineInventory", icon: Factory,               group: "maintenance"         },
   { href: "/IEDepartment/LineLayout",       icon: PanelLeftRightDashed,  group: "ie"         },
 ];
+
 
 // ── role + trackerType → allowed groups ──────────────────────────────────────
 function getAllowedGroups(role, trackerType) {
   if (role === "Management" || role === "Developer" || role === "Others") {
-    return ["common", "production", "quality", "tracker", "ie"];
+    // ✅ Added "maintenance" to the list
+    return ["common", "production", "quality", "tracker", "ie", "maintenance"];
   }
   if (role === "Data tracker") {
-    if (trackerType === "Quality")    return ["common", "quality",    "tracker"];
-    if (trackerType === "Production") return ["common", "production", "tracker"];
-    if (trackerType === "IE")         return ["common", "ie"];
+    if (trackerType === "Quality")      return ["common", "quality",      "tracker"];
+    if (trackerType === "Production")   return ["common", "production",   "tracker"];
+    if (trackerType === "Maintenance")  return ["common", "maintenance"];  // ✅ No "tracker" — style-media-register not relevant
+    if (trackerType === "IE")           return ["common", "ie"];
     return ["common"];
   }
   return [];
 }
-
 export default function SideNavbar() {
   const { auth, setAuth } = useAuth();
   const router   = useRouter();
