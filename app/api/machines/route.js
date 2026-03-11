@@ -4,10 +4,7 @@ import { dbConnect } from "@/services/mongo";
 import { machineModel } from "@/models/machine-model";
 
 // ─── Floor name normalization ─────────────────────────────────────────────────
-// Ensures whatever the client sends, we always store the canonical form
-// that matches FLOOR_COLS dbKey in MachineInventoryTable.
 const FLOOR_NORMALIZE_MAP = {
-  // without dash → with dash
   "a2": "A-2", "a-2": "A-2", "A2": "A-2",
   "b2": "B-2", "b-2": "B-2", "B2": "B-2",
   "a3": "A-3", "a-3": "A-3", "A3": "A-3",
@@ -16,29 +13,25 @@ const FLOOR_NORMALIZE_MAP = {
   "b4": "B-4", "b-4": "B-4", "B4": "B-4",
   "a5": "A-5", "a-5": "A-5", "A5": "A-5",
   "b5": "B-5", "b-5": "B-5", "B5": "B-5",
-  "a6": "A-6", "a-6": "A-6", "A6": "A-6",      // ← was missing
-  "b6": "B-6", "b-6": "B-6", "B6": "B-6",      // ← was missing
-  "c4": "C-4", "c-4": "C-4", "C4": "C-4",      // ← was missing
-  "k3": "K-3", "k-3": "K-3", "K3": "K-3",      // ← was missing
-  // SMD/CAD variants
-  "smd/cad": "SMD/CAD",
-  "smd/Cad": "SMD/CAD",
-  "SMD/Cad": "SMD/CAD",
-  "smdcad":  "SMD/CAD",
-  "SMDCAD":  "SMD/CAD",
-  // others pass through as-is
+  "a6": "A-6", "a-6": "A-6", "A6": "A-6",
+  "b6": "B-6", "b-6": "B-6", "B6": "B-6",
+  "c4": "C-4", "c-4": "C-4", "C4": "C-4",
+  "k3": "K-3", "k-3": "K-3", "K3": "K-3",
+  "smd/cad": "SMD/CAD", "smd/Cad": "SMD/CAD",
+  "SMD/Cad": "SMD/CAD", "smdcad": "SMD/CAD", "SMDCAD": "SMD/CAD",
 };
 
 function normalizeFloor(raw) {
   if (!raw) return raw;
   const trimmed = raw.trim();
-  // Check exact match first, then lowercase match
   return FLOOR_NORMALIZE_MAP[trimmed]
       ?? FLOOR_NORMALIZE_MAP[trimmed.toLowerCase()]
-      ?? trimmed;   // "Others", "New", already-canonical values pass through
+      ?? trimmed;
 }
 
-// ─── GET /api/machines?factory=K-2&name=SINGLE+NDL ───────────────────────────
+// ─── GET /api/machines ────────────────────────────────────────────────────────
+// ?factory=K-2              → list all machines for factory
+// ?factory=K-2&name=SINGLE  → single machine detail (for form pre-fill)
 export async function GET(request) {
   try {
     await dbConnect();
@@ -55,7 +48,6 @@ export async function GET(request) {
       return NextResponse.json({ success: true, data: machine });
     }
 
-    // List all — optionally filter by factory
     const query = {};
     if (factory) query.factory = factory;
     const machines = await machineModel.find(query).lean();
@@ -69,27 +61,31 @@ export async function GET(request) {
   }
 }
 
-// ─── POST /api/machines  — create or upsert floor data ───────────────────────
+// ─── POST /api/machines ───────────────────────────────────────────────────────
+// Body: { factory, machineName, serialNumber, floorName, status }
+// Behaviour:
+//   • If serialNumber already exists in this machine → update floorName + status
+//   • If serialNumber is new → add unit to machine's units array
+//   • If machine itself doesn't exist → create it
 export async function POST(request) {
   try {
     await dbConnect();
     const body = await request.json();
-    const { factory, machineName, running, idle, repairable, damage } = body;
-
-    // ← Normalize floor name before anything else
+    const { factory, machineName, serialNumber, status } = body;
     const floorName = normalizeFloor(body.floorName);
 
-    if (!machineName || !floorName) {
+    if (!machineName || !floorName || !serialNumber || !status) {
       return NextResponse.json(
-        { success: false, message: "machineName এবং floorName দেওয়া আবশ্যক।" },
+        { success: false, message: "machineName, serialNumber, floorName এবং status দেওয়া আবশ্যক।" },
         { status: 400 }
       );
     }
 
-    function calcStockQty(floors) {
-      return floors.reduce(
-        (total, f) => total + (f.running ?? 0) + (f.idle ?? 0) + (f.repairable ?? 0),
-        0
+    const validStatuses = ["Running", "Idle", "Repairable", "Damage"];
+    if (!validStatuses.includes(status)) {
+      return NextResponse.json(
+        { success: false, message: `status অবশ্যই ${validStatuses.join(", ")} এর মধ্যে একটি হতে হবে।` },
+        { status: 400 }
       );
     }
 
@@ -99,19 +95,11 @@ export async function POST(request) {
     let machine = await machineModel.findOne(matchQuery);
 
     if (!machine) {
-      // Create new machine document
-      const floors = [{
-        floorName,
-        running:    running    ?? 0,
-        idle:       idle       ?? 0,
-        repairable: repairable ?? 0,
-        damage:     damage     ?? 0,
-      }];
+      // Create new machine with first unit
       machine = await machineModel.create({
         factory:  factory || "",
         machineName,
-        stockQty: calcStockQty(floors),
-        floors,
+        units: [{ serialNumber, floorName, status }],
       });
       return NextResponse.json(
         { success: true, message: "Machine তৈরি হয়েছে।", data: machine },
@@ -119,30 +107,71 @@ export async function POST(request) {
       );
     }
 
-    // Upsert floor within existing machine
-    const fi = machine.floors.findIndex((f) => f.floorName === floorName);
-    if (fi >= 0) {
-      machine.floors[fi].running    = running    ?? machine.floors[fi].running;
-      machine.floors[fi].idle       = idle       ?? machine.floors[fi].idle;
-      machine.floors[fi].repairable = repairable ?? machine.floors[fi].repairable;
-      machine.floors[fi].damage     = damage     ?? machine.floors[fi].damage;
+    // Find existing unit by serialNumber
+    const unitIdx = machine.units.findIndex(
+      (u) => u.serialNumber === serialNumber
+    );
+
+    if (unitIdx >= 0) {
+      // Update existing unit — update floor and status
+      machine.units[unitIdx].floorName = floorName;
+      machine.units[unitIdx].status    = status;
     } else {
-      machine.floors.push({
-        floorName,
-        running:    running    ?? 0,
-        idle:       idle       ?? 0,
-        repairable: repairable ?? 0,
-        damage:     damage     ?? 0,
-      });
+      // Add new unit
+      machine.units.push({ serialNumber, floorName, status });
     }
 
-    machine.stockQty = calcStockQty(machine.floors);
     await machine.save();
-    return NextResponse.json({ success: true, message: "Machine আপডেট হয়েছে।", data: machine });
+    return NextResponse.json({
+      success: true,
+      message: unitIdx >= 0 ? "Machine unit আপডেট হয়েছে।" : "নতুন Machine unit যোগ হয়েছে।",
+      data: machine,
+    });
 
   } catch (err) {
     return NextResponse.json(
       { success: false, message: err?.message || "Failed to save" },
+      { status: 500 }
+    );
+  }
+}
+
+// ─── DELETE /api/machines ─────────────────────────────────────────────────────
+// Body: { factory, machineName, serialNumber }
+export async function DELETE(request) {
+  try {
+    await dbConnect();
+    const body = await request.json();
+    const { factory, machineName, serialNumber } = body;
+
+    if (!machineName || !serialNumber) {
+      return NextResponse.json(
+        { success: false, message: "machineName এবং serialNumber দেওয়া আবশ্যক।" },
+        { status: 400 }
+      );
+    }
+
+    const matchQuery = { machineName };
+    if (factory) matchQuery.factory = factory;
+
+    const machine = await machineModel.findOne(matchQuery);
+    if (!machine) {
+      return NextResponse.json({ success: false, message: "Machine পাওয়া যায়নি।" }, { status: 404 });
+    }
+
+    const before = machine.units.length;
+    machine.units = machine.units.filter((u) => u.serialNumber !== serialNumber);
+
+    if (machine.units.length === before) {
+      return NextResponse.json({ success: false, message: "Serial number পাওয়া যায়নি।" }, { status: 404 });
+    }
+
+    await machine.save();
+    return NextResponse.json({ success: true, message: "Machine unit মুছে ফেলা হয়েছে।" });
+
+  } catch (err) {
+    return NextResponse.json(
+      { success: false, message: err?.message || "Failed to delete" },
       { status: 500 }
     );
   }

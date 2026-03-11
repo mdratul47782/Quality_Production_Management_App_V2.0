@@ -105,6 +105,9 @@ function WasteFloorPicker({ processEntry, layoutFloor, onConfirm, onCancel }) {
                 <div key={i} className="flex items-center gap-3 bg-slate-50 rounded-lg px-3 py-2">
                   <div className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
                   <span className="text-base text-slate-700 flex-1">{m.machineName}</span>
+                  {m.serialNumber && (
+                    <span className="text-xs font-mono bg-slate-200 text-slate-600 px-2 py-0.5 rounded">{m.serialNumber}</span>
+                  )}
                   <span className="text-sm text-amber-600">{m.fromFloor} →</span>
                   <span className="text-sm text-red-600 font-bold">{wasteFloor}</span>
                 </div>
@@ -130,72 +133,141 @@ function WasteFloorPicker({ processEntry, layoutFloor, onConfirm, onCancel }) {
   );
 }
 
-// ─── Machine Floor Picker Modal ───────────────────────────────────────────────
+// ─── Machine Serial Picker Modal ──────────────────────────────────────────────
+// Shows individual idle machine units grouped by machine type + floor.
+// User selects specific serial numbers to assign to this process.
 function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) {
-  const [machines, setMachines] = useState([]);
-  const [loading, setLoading]   = useState(true);
-  const [selected, setSelected] = useState([]);
+  const [idleUnits, setIdleUnits] = useState([]); // flat list of idle units
+  const [loading, setLoading]     = useState(true);
+  const [selected, setSelected]   = useState([]); // Array of unit objects
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        const url  = factory ? `/api/machines?factory=${encodeURIComponent(factory)}` : "/api/machines";
+        const url  = factory
+          ? `/api/machines?factory=${encodeURIComponent(factory)}`
+          : "/api/machines";
         const res  = await fetch(url);
         const json = await res.json();
         if (json.success) {
-          setMachines((json.data || []).filter((m) =>
-            machineType === "HELPER" ? true : m.machineName === machineType
-          ));
+          // Collect all idle units from matching machine type(s)
+          const allIdle = [];
+          for (const machine of (json.data || [])) {
+            // For HELPER: show all machine types; otherwise filter by type
+            if (machineType !== "HELPER" && machine.machineName !== machineType) continue;
+            for (const unit of (machine.units || [])) {
+              if (unit.status === "Idle") {
+                allIdle.push({
+                  machineId:    machine._id,
+                  machineName:  machine.machineName,
+                  serialNumber: unit.serialNumber,
+                  fromFloor:    unit.floorName,
+                });
+              }
+            }
+          }
+          // Sort: by machineName then serialNumber
+          allIdle.sort((a, b) =>
+            a.machineName.localeCompare(b.machineName) ||
+            a.serialNumber.localeCompare(b.serialNumber)
+          );
+          setIdleUnits(allIdle);
         }
       } finally { setLoading(false); }
     })();
-  }, [machineType]);
+  }, [machineType, factory]);
 
-  function toggleFloor(machineId, machineName, floorName) {
+  function toggleUnit(unit) {
     setSelected((prev) => {
-      const exists = prev.find((s) => s.machineId === machineId && s.fromFloor === floorName);
+      const exists = prev.find(
+        (s) => s.machineId === unit.machineId && s.serialNumber === unit.serialNumber
+      );
       return exists
-        ? prev.filter((s) => !(s.machineId === machineId && s.fromFloor === floorName))
-        : [...prev, { machineId, machineName, fromFloor: floorName }];
+        ? prev.filter(
+            (s) => !(s.machineId === unit.machineId && s.serialNumber === unit.serialNumber)
+          )
+        : [...prev, unit];
     });
   }
 
-  const isSel = (mid, floor) => selected.some((s) => s.machineId === mid && s.fromFloor === floor);
+  function isSelected(unit) {
+    return selected.some(
+      (s) => s.machineId === unit.machineId && s.serialNumber === unit.serialNumber
+    );
+  }
+
+  // Group idle units by floor for display
+  const byFloor = idleUnits.reduce((acc, unit) => {
+    const key = unit.fromFloor;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(unit);
+    return acc;
+  }, {});
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
       <div className="bg-white border border-slate-300 rounded-2xl w-full max-w-xl shadow-2xl">
         <div className="h-1 bg-gradient-to-r from-blue-500 to-violet-500 rounded-t-2xl" />
         <div className="p-6">
+
+          {/* Header */}
           <div className="flex items-center justify-between mb-5">
-            <h3 className="font-bold text-slate-800 text-lg">Machine ও Floor select করুন</h3>
-            <span className="text-sm text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full font-medium">{machineType}</span>
+            <div>
+              <h3 className="font-bold text-slate-800 text-lg">Serial Number select করুন</h3>
+              <p className="text-slate-400 text-sm mt-0.5">Idle machine গুলোর মধ্য থেকে বেছে নিন</p>
+            </div>
+            <span className="text-sm text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full font-medium">
+              {machineType}
+            </span>
           </div>
+
+          {/* Body */}
           {loading ? (
-            <p className="text-slate-400 text-base animate-pulse py-8 text-center">লোড হচ্ছে...</p>
-          ) : machines.length === 0 ? (
-            <p className="text-slate-400 text-base py-8 text-center">কোনো machine পাওয়া যায়নি।</p>
+            <p className="text-slate-400 text-base animate-pulse py-10 text-center">লোড হচ্ছে...</p>
+          ) : idleUnits.length === 0 ? (
+            <div className="py-10 text-center">
+              <p className="text-4xl mb-3">🔍</p>
+              <p className="text-slate-500 text-base font-medium">কোনো idle machine পাওয়া যায়নি।</p>
+              <p className="text-slate-400 text-sm mt-1">
+                Machine Inventory তে idle unit যোগ করুন।
+              </p>
+            </div>
           ) : (
-            <div className="max-h-72 overflow-y-auto space-y-4 pr-1">
-              {machines.map((m) => (
-                <div key={m._id}>
-                  <p className="text-base text-slate-600 mb-2 font-medium">{m.machineName}</p>
-                  <div className="flex flex-wrap gap-2">
-                    {(m.floors || []).map((f) => {
-                      const sel = isSel(m._id, f.floorName);
-                      const hasIdle = f.idle > 0;
+            <div className="max-h-80 overflow-y-auto space-y-4 pr-1">
+              {Object.entries(byFloor).map(([floor, units]) => (
+                <div key={floor}>
+                  {/* Floor label */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Floor</span>
+                    <span className="text-sm font-black text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
+                      {floor}
+                    </span>
+                    <span className="text-xs text-slate-400">{units.length} idle</span>
+                  </div>
+
+                  {/* Serial number chips */}
+                  <div className="flex flex-wrap gap-2 pl-1">
+                    {units.map((unit) => {
+                      const sel = isSelected(unit);
                       return (
-                        <button key={f.floorName} disabled={!hasIdle}
-                          onClick={() => toggleFloor(m._id, m.machineName, f.floorName)}
-                          className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all
-                            ${sel ? "bg-blue-600 border-blue-500 text-white"
-                              : hasIdle ? "bg-white border-slate-300 text-slate-700 hover:border-blue-400"
-                              : "bg-slate-50 border-slate-200 text-slate-400 cursor-not-allowed"}`}>
-                          {f.floorName}
-                          <span className={`ml-2 text-xs ${hasIdle ? "text-amber-600" : "text-slate-400"}`}>
-                            ({f.idle} idle)
-                          </span>
+                        <button
+                          key={`${unit.machineId}-${unit.serialNumber}`}
+                          type="button"
+                          onClick={() => toggleUnit(unit)}
+                          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-mono font-bold border-2 transition-all
+                            ${sel
+                              ? "bg-blue-600 border-blue-500 text-white shadow-md shadow-blue-200"
+                              : "bg-white border-slate-300 text-slate-700 hover:border-blue-400 hover:bg-blue-50"
+                            }`}
+                        >
+                          {sel && <span className="text-xs">✓</span>}
+                          <span>{unit.serialNumber}</span>
+                          {machineType === "HELPER" && (
+                            <span className={`text-[10px] font-sans font-normal ${sel ? "text-blue-200" : "text-slate-400"}`}>
+                              {unit.machineName.split(" ").slice(0, 2).join(" ")}
+                            </span>
+                          )}
                         </button>
                       );
                     })}
@@ -204,10 +276,35 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
               ))}
             </div>
           )}
-          <div className="flex gap-3 mt-6">
-            <button disabled={selected.length === 0} onClick={() => onConfirm(selected)}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all">
-              {selected.length > 0 ? `${selected.length}টি machine যোগ করুন` : "কোনো machine select করুনি"}
+
+          {/* Selected summary */}
+          {selected.length > 0 && (
+            <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+              <p className="text-xs text-blue-600 uppercase tracking-widest font-bold mb-2">
+                নির্বাচিত ({selected.length}টি)
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {selected.map((s) => (
+                  <span key={`${s.machineId}-${s.serialNumber}`}
+                    className="text-xs font-mono font-bold bg-blue-600 text-white px-2.5 py-1 rounded-lg">
+                    {s.serialNumber}
+                    <span className="ml-1 text-blue-300 font-normal">{s.fromFloor}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex gap-3 mt-5">
+            <button
+              disabled={selected.length === 0}
+              onClick={() => onConfirm(selected)}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all"
+            >
+              {selected.length > 0
+                ? `${selected.length}টি machine যোগ করুন →`
+                : "Serial select করুন"}
             </button>
             <button onClick={onCancel}
               className="px-6 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">
@@ -220,28 +317,24 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
   );
 }
 
-// ─── Excel-Style Layout Grid (drag-to-swap + drop-into-empty-slot) ────────────
+// ─── Excel-Style Layout Grid ──────────────────────────────────────────────────
 function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot, layoutFloor, layoutInfo }) {
   const [wasteTarget, setWasteTarget] = useState(null);
-  const [dragOverKey, setDragOverKey] = useState(null); // "id:<_id>" or "slot:<serialNo>"
-  const dragId = useRef(null); // _id of process being dragged
+  const [dragOverKey, setDragOverKey] = useState(null);
+  const dragId = useRef(null);
 
   const sorted = [...processes].sort((a, b) => a.serialNo - b.serialNo);
 
-  // Build a map: serialNo → array of process entries (supports multiple per serial)
   const bySerial = {};
   sorted.forEach((p) => {
     if (!bySerial[p.serialNo]) bySerial[p.serialNo] = [];
     bySerial[p.serialNo].push(p);
   });
 
-  // Determine full range of slots to render (1 → maxSerial, filling ALL gaps)
   const maxSerial = sorted.length > 0 ? sorted[sorted.length - 1].serialNo : 0;
-  // Build slot list: every integer from 1 to maxSerial
-  const allSlots = [];
+  const allSlots  = [];
   for (let sn = 1; sn <= maxSerial; sn++) allSlots.push(sn);
 
-  // Pair slots into rows: odd serial = LEFT, even serial = RIGHT
   const rowMap = new Map();
   allSlots.forEach((sn) => {
     const rowIdx = Math.ceil(sn / 2) - 1;
@@ -257,48 +350,39 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
     summary[key] = (summary[key] || 0) + (p.machines?.length || 1);
   });
 
-  // ── Drag handlers ────────────────────────────────────────────────────────
-  function handleDragStart(e, id) {
-    dragId.current = id;
-    e.dataTransfer.effectAllowed = "move";
-  }
-  function handleDragOverCell(e, key) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverKey(key);
-  }
-  function handleDragLeave(e) {
-    // Only clear if leaving the cell entirely (not entering a child)
-    if (!e.currentTarget.contains(e.relatedTarget)) setDragOverKey(null);
-  }
+  function handleDragStart(e, id)     { dragId.current = id; e.dataTransfer.effectAllowed = "move"; }
+  function handleDragOverCell(e, key) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverKey(key); }
+  function handleDragLeave(e)         { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverKey(null); }
+  function handleDragEnd()            { setDragOverKey(null); dragId.current = null; }
+
   function handleDropOnProcess(e, targetId) {
-    e.preventDefault();
-    setDragOverKey(null);
-    const fromId = dragId.current;
-    dragId.current = null;
+    e.preventDefault(); setDragOverKey(null);
+    const fromId = dragId.current; dragId.current = null;
     if (!fromId || fromId === targetId) return;
     const fromProc = processes.find((p) => p._id === fromId);
     const toProc   = processes.find((p) => p._id === targetId);
     if (fromProc && toProc) onSwapSerial(fromId, fromProc.serialNo, targetId, toProc.serialNo);
   }
+
   function handleDropOnSlot(e, slotSerial) {
-    e.preventDefault();
-    setDragOverKey(null);
-    const fromId = dragId.current;
-    dragId.current = null;
+    e.preventDefault(); setDragOverKey(null);
+    const fromId = dragId.current; dragId.current = null;
     if (!fromId) return;
     const fromProc = processes.find((p) => p._id === fromId);
     if (!fromProc || fromProc.serialNo === slotSerial) return;
-    // Move process into empty slot — change its serial to slotSerial
     onMoveToSlot(fromId, slotSerial);
   }
-  function handleDragEnd() { setDragOverKey(null); dragId.current = null; }
 
   // ── Filled Process Cell ───────────────────────────────────────────────────
   function ProcessCell({ entry }) {
     const c      = mc(entry.machineType);
     const key    = `id:${entry._id}`;
     const isOver = dragOverKey === key;
+
+    // Collect serial numbers assigned to this process entry
+    const serials = (entry.machines || [])
+      .filter((m) => m.serialNumber)
+      .map((m) => m.serialNumber);
 
     return (
       <div
@@ -317,8 +401,8 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
           borderBottom: "1px solid rgba(0,0,0,0.08)",
           borderRadius: 4,
           marginBottom: 3,
-          opacity: dragId.current === entry._id ? 0.4 : 1,
-          transition: "border-color 0.1s, background 0.1s",
+          opacity:      dragId.current === entry._id ? 0.4 : 1,
+          transition:   "border-color 0.1s, background 0.1s",
         }}>
         <span className="absolute left-1 top-1/2 -translate-y-1/2 text-slate-300 text-xs select-none opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">⣿</span>
         <button
@@ -328,11 +412,13 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
           ✕
         </button>
         <div className="px-4 py-2">
-          <div className="flex items-start gap-2 mb-1.5">
+          <div className="flex items-start gap-2 mb-1.5 flex-wrap">
+            {/* Layout serial number (position in line) */}
             <span className="text-xs font-black px-2 py-0.5 rounded shrink-0"
               style={{ background: isOver ? "#1d4ed8" : c.badge, color: c.badgeText }}>
               {entry.serialNo}
             </span>
+            {/* Floor badges */}
             {entry.machineType !== "HELPER" && (entry.machines || []).map((m, i) => (
               <span key={i} className="text-xs px-2 py-0.5 rounded font-bold shrink-0"
                 style={{ background: c.accent, color: "#fff", opacity: 0.9 }}>
@@ -340,12 +426,36 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
               </span>
             ))}
           </div>
+
           <p className="text-sm font-semibold leading-snug mb-1.5" style={{ color: isOver ? "#1e3a5f" : c.text }}>
             {entry.processName}
           </p>
-          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: isOver ? "#1d4ed8" : c.accent }}>
+
+          <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: isOver ? "#1d4ed8" : c.accent }}>
             {entry.machineType}
           </p>
+
+          {/* ── Serial numbers — shown on right side of card ── */}
+          {serials.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1 border-t pt-1.5" style={{ borderColor: `${c.accent}30` }}>
+              <span className="text-[10px] uppercase tracking-widest font-bold mr-1" style={{ color: `${c.accent}99` }}>
+                S/N:
+              </span>
+              {serials.map((sn) => (
+                <span
+                  key={sn}
+                  className="text-[11px] font-mono font-black px-2 py-0.5 rounded"
+                  style={{
+                    background: `${c.accent}18`,
+                    color:       c.accent,
+                    border:      `1px solid ${c.accent}40`,
+                  }}
+                >
+                  {sn}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -361,20 +471,20 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
         onDragLeave={handleDragLeave}
         onDrop={(e)      => handleDropOnSlot(e, serialNo)}
         style={{
-          minHeight: 54,
+          minHeight:   54,
           borderRadius: 4,
           marginBottom: 3,
-          border: isOver ? "2px dashed #1d4ed8" : "2px dashed #cbd5e1",
-          background: isOver ? "#eff6ff" : "transparent",
-          display: "flex",
-          alignItems: "center",
+          border:       isOver ? "2px dashed #1d4ed8" : "2px dashed #cbd5e1",
+          background:   isOver ? "#eff6ff" : "transparent",
+          display:      "flex",
+          alignItems:   "center",
           justifyContent: "center",
-          transition: "border-color 0.1s, background 0.1s",
+          transition:   "border-color 0.1s, background 0.1s",
         }}>
         <span style={{
-          fontSize: 11,
-          fontWeight: 700,
-          color: isOver ? "#1d4ed8" : "#94a3b8",
+          fontSize:    11,
+          fontWeight:  700,
+          color:       isOver ? "#1d4ed8" : "#94a3b8",
           letterSpacing: "0.05em",
         }}>
           {isOver ? `▼ serial ${serialNo} এ রাখুন` : `# ${serialNo} — খালি`}
@@ -394,7 +504,7 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
         />
       )}
 
-      {/* sticky header info bar */}
+      {/* Sticky header info bar */}
       {layoutInfo && (
         <div className="sticky top-0 z-20 bg-[#f0f4f8] border-b-2 border-slate-300">
           <div className="text-center py-2 border-b border-slate-300 flex items-center justify-center gap-3">
@@ -404,18 +514,18 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
           <div className="flex items-stretch divide-x divide-slate-300">
             <div className="flex-1 grid grid-cols-3 divide-x divide-slate-300 text-sm">
               {[
-                { label: "Unit / Floor", value: `${layoutInfo.floor} · Line ${layoutInfo.lineNo}` },
-                { label: "Buyer",        value: layoutInfo.buyer },
-                { label: "Style",        value: layoutInfo.style },
-                { label: "Item",         value: layoutInfo.item },
-                { label: "SMV",          value: layoutInfo.smv },
-                { label: "Plan Eff.",    value: `${layoutInfo.planEfficiency}%` },
-                { label: "Op + Hel + SS",value: `${layoutInfo.operator}+${layoutInfo.helper}+${layoutInfo.seamSealing}` },
-                { label: "Manpower",     value: layoutInfo.manpower },
-                { label: "Working Hrs",  value: `${layoutInfo.workingHours}h` },
-                { label: "1 Hour Tgt",   value: layoutInfo.oneHourTarget },
+                { label: "Unit / Floor",  value: `${layoutInfo.floor} · Line ${layoutInfo.lineNo}` },
+                { label: "Buyer",         value: layoutInfo.buyer },
+                { label: "Style",         value: layoutInfo.style },
+                { label: "Item",          value: layoutInfo.item },
+                { label: "SMV",           value: layoutInfo.smv },
+                { label: "Plan Eff.",     value: `${layoutInfo.planEfficiency}%` },
+                { label: "Op + Hel + SS", value: `${layoutInfo.operator}+${layoutInfo.helper}+${layoutInfo.seamSealing}` },
+                { label: "Manpower",      value: layoutInfo.manpower },
+                { label: "Working Hrs",   value: `${layoutInfo.workingHours}h` },
+                { label: "1 Hour Tgt",    value: layoutInfo.oneHourTarget },
                 { label: `Daily Tgt (${layoutInfo.workingHours}h)`, value: layoutInfo.dailyTarget },
-                { label: "Processes",    value: processes.length },
+                { label: "Processes",     value: processes.length },
               ].map(({ label, value }) => (
                 <div key={label} className="px-3 py-2 flex justify-between items-center">
                   <span className="text-slate-500 font-medium">{label}:</span>
@@ -501,31 +611,28 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
 
 // ─── Drag-to-reorder Serial List ──────────────────────────────────────────────
 function DragSerialList({ processes, layoutId, onUpdate, showToast }) {
-  const [items, setItems] = useState([]);
+  const [items, setItems]   = useState([]);
   const [saving, setSaving] = useState(false);
   const [dragOverI, setDragOverI] = useState(null);
   const dragIdx = useRef(null);
 
-  // Sort by serialNo only — do NOT resequence, gaps are intentional
   useEffect(() => {
     setItems([...processes].sort((a, b) => a.serialNo - b.serialNo));
   }, [processes]);
 
-  function handleDragStart(idx) { dragIdx.current = idx; }
-  function handleDragOver(e, idx) { e.preventDefault(); setDragOverI(idx); }
-  function handleDragLeave() { setDragOverI(null); }
+  function handleDragStart(idx)      { dragIdx.current = idx; }
+  function handleDragOver(e, idx)    { e.preventDefault(); setDragOverI(idx); }
+  function handleDragLeave()         { setDragOverI(null); }
   function handleDrop(toIdx) {
     const from = dragIdx.current;
     setDragOverI(null);
     if (from === null || from === toIdx) return;
     const newItems = [...items];
-    const [moved] = newItems.splice(from, 1);
+    const [moved]  = newItems.splice(from, 1);
     newItems.splice(toIdx, 0, moved);
-    // Swap serial numbers of the two items only — keep all others intact
     const fromSerial = items[from].serialNo;
     const toSerial   = items[toIdx].serialNo;
-    newItems[toIdx]  = { ...newItems[toIdx],  serialNo: fromSerial };
-    // find where the moved item ended up and restore its serial
+    newItems[toIdx]  = { ...newItems[toIdx], serialNo: fromSerial };
     const movedNewIdx = newItems.findIndex((x) => x._id === moved._id);
     newItems[movedNewIdx] = { ...newItems[movedNewIdx], serialNo: toSerial };
     setItems([...newItems].sort((a, b) => a.serialNo - b.serialNo));
@@ -561,8 +668,9 @@ function DragSerialList({ processes, layoutId, onUpdate, showToast }) {
       </div>
       <div className="flex-1 overflow-y-auto p-3 space-y-1.5">
         {items.map((p, idx) => {
-          const c = mc(p.machineType);
+          const c      = mc(p.machineType);
           const isOver = dragOverI === idx;
+          const serials = (p.machines || []).filter((m) => m.serialNumber).map((m) => m.serialNumber);
           return (
             <div key={p._id} draggable
               onDragStart={() => handleDragStart(idx)}
@@ -571,15 +679,14 @@ function DragSerialList({ processes, layoutId, onUpdate, showToast }) {
               onDrop={() => handleDrop(idx)}
               className="flex items-center gap-2 rounded-lg px-3 py-2.5 cursor-grab active:cursor-grabbing border select-none transition-all"
               style={{
-                background: isOver ? "#dbeafe" : c.bg,
-                borderLeft: `4px solid ${isOver ? "#1d4ed8" : c.accent}`,
-                borderTop: `${isOver ? "2px solid #1d4ed8" : "1px solid rgba(0,0,0,0.08)"}`,
-                borderRight: `1px solid rgba(0,0,0,0.08)`,
+                background:   isOver ? "#dbeafe" : c.bg,
+                borderLeft:   `4px solid ${isOver ? "#1d4ed8" : c.accent}`,
+                borderTop:    `${isOver ? "2px solid #1d4ed8" : "1px solid rgba(0,0,0,0.08)"}`,
+                borderRight:  `1px solid rgba(0,0,0,0.08)`,
                 borderBottom: `1px solid rgba(0,0,0,0.08)`,
-                boxShadow: isOver ? "0 2px 8px rgba(29,78,216,0.15)" : undefined,
+                boxShadow:    isOver ? "0 2px 8px rgba(29,78,216,0.15)" : undefined,
               }}>
               <span className="text-slate-400 text-lg mr-1">⣿</span>
-              {/* Show actual serial number */}
               <span className="text-xs font-black px-2 py-0.5 rounded shrink-0"
                 style={{ background: c.badge, color: c.badgeText }}>
                 {p.serialNo}
@@ -587,6 +694,17 @@ function DragSerialList({ processes, layoutId, onUpdate, showToast }) {
               <span className="text-sm flex-1 leading-tight font-medium" style={{ color: c.text }}>
                 {p.processName.substring(0, 36)}{p.processName.length > 36 ? "…" : ""}
               </span>
+              {/* Serial numbers inline */}
+              {serials.length > 0 && (
+                <div className="flex gap-1 shrink-0">
+                  {serials.map((sn) => (
+                    <span key={sn} className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded"
+                      style={{ background: `${c.accent}20`, color: c.accent, border: `1px solid ${c.accent}30` }}>
+                      {sn}
+                    </span>
+                  ))}
+                </div>
+              )}
               <span className="text-xs shrink-0 font-bold" style={{ color: c.accent }}>
                 {p.machineType?.split(" ").slice(0, 2).join(" ")}
               </span>
@@ -635,11 +753,9 @@ export default function LineLayoutPage() {
     operator:"", helper:"", seamSealing:"", workingHours:8,
   });
 
-  // ── Process edit state ──────────────────────────────────────────────────────
-  // editingProcess: { _id, serialNo, processName, machineType, originalMachineType, originalMachines }
   const [editingProcess, setEditingProcess] = useState(null);
   const [procEditSaving, setProcEditSaving] = useState(false);
-  const [showEditPicker, setShowEditPicker] = useState(false); // MachineFloorPicker for edit
+  const [showEditPicker, setShowEditPicker] = useState(false);
 
   const [toast, setToast] = useState(null);
   function showToast(type, msg) { setToast({ type, msg }); setTimeout(() => setToast(null), 3000); }
@@ -718,7 +834,13 @@ export default function LineLayoutPage() {
     try {
       const res  = await fetch(`/api/line-layouts/${currentLayout._id}`, {
         method:"PATCH", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({ action:"add_process", serialNo:pForm.serialNo, processName:pForm.processName, machineType:pForm.machineType, machinesSelected }),
+        body: JSON.stringify({
+          action:"add_process",
+          serialNo:       pForm.serialNo,
+          processName:    pForm.processName,
+          machineType:    pForm.machineType,
+          machinesSelected,
+        }),
       });
       const json = await res.json();
       if (json.success) {
@@ -740,10 +862,8 @@ export default function LineLayoutPage() {
     else showToast("error", json.message);
   }
 
-  // Swap serial numbers of two processes directly (called from LayoutGrid drag)
   async function handleSwapSerial(fromId, fromSerial, toId, toSerial) {
     if (!currentLayout) return;
-    // Optimistic update in UI first
     setCurrentLayout((prev) => ({
       ...prev,
       processes: prev.processes.map((p) => {
@@ -755,24 +875,16 @@ export default function LineLayoutPage() {
     try {
       const res  = await fetch(`/api/line-layouts/${currentLayout._id}`, {
         method:"PATCH", headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({
-          action: "swap_serial",
-          fromId, fromSerial,
-          toId,   toSerial,
-        }),
+        body: JSON.stringify({ action:"swap_serial", fromId, fromSerial, toId, toSerial }),
       });
       const json = await res.json();
       if (json.success) { setCurrentLayout(json.data); }
-      else { showToast("error", json.message); }
-    } catch {
-      showToast("error", "Serial swap করতে সমস্যা হয়েছে।");
-    }
+      else showToast("error", json.message);
+    } catch { showToast("error","Serial swap করতে সমস্যা হয়েছে।"); }
   }
 
-  // Move a process into an empty slot (change its serialNo)
   async function handleMoveToSlot(fromId, newSerial) {
     if (!currentLayout) return;
-    // Optimistic UI update
     setCurrentLayout((prev) => ({
       ...prev,
       processes: prev.processes.map((p) =>
@@ -781,54 +893,43 @@ export default function LineLayoutPage() {
     }));
     try {
       const res  = await fetch(`/api/line-layouts/${currentLayout._id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "move_to_slot", processId: fromId, newSerial }),
+        method:"PATCH", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ action:"move_to_slot", processId: fromId, newSerial }),
       });
       const json = await res.json();
       if (json.success) { setCurrentLayout(json.data); }
-      else { showToast("error", json.message); }
-    } catch {
-      showToast("error", "Serial পরিবর্তন করতে সমস্যা হয়েছে।");
-    }
+      else showToast("error", json.message);
+    } catch { showToast("error","Serial পরিবর্তন করতে সমস্যা হয়েছে।"); }
   }
 
-  // Called when user clicks "আপডেট করুন" in edit modal
   function handleSaveProcessEdit(e) {
     e.preventDefault();
     if (!editingProcess || !currentLayout) return;
-    const machineChanged =
-      editingProcess.machineType !== editingProcess.originalMachineType;
-
+    const machineChanged = editingProcess.machineType !== editingProcess.originalMachineType;
     if (machineChanged && editingProcess.machineType !== "HELPER") {
-      // Open floor picker for new machine type
       setShowEditPicker(true);
     } else if (machineChanged && editingProcess.machineType === "HELPER") {
-      // HELPER needs no floor — just return old machines and save with empty machines
       doSaveProcessEdit([]);
     } else {
-      // Serial / processName only — no machine inventory change
-      doSaveProcessEdit(null); // null = keep existing machines
+      doSaveProcessEdit(null);
     }
   }
 
-  // machinesSelected = array of new machines (or null = keep existing, or [] = clear)
   async function doSaveProcessEdit(machinesSelected) {
     if (!editingProcess || !currentLayout) return;
     setShowEditPicker(false);
     setProcEditSaving(true);
     try {
       const res  = await fetch(`/api/line-layouts/${currentLayout._id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
+        method:"PATCH", headers:{"Content-Type":"application/json"},
         body: JSON.stringify({
-          action:       "edit_process",
-          processId:    editingProcess._id,
-          serialNo:     Number(editingProcess.serialNo),
-          processName:  editingProcess.processName,
-          machineType:  editingProcess.machineType,
-          // send original machines so API can return them to inventory
-          oldMachines:  editingProcess.originalMachines,
-          // null = don't touch machines; [] = HELPER; [...] = new assignment
-          newMachines:  machinesSelected,
+          action:         "edit_process",
+          processId:      editingProcess._id,
+          serialNo:       Number(editingProcess.serialNo),
+          processName:    editingProcess.processName,
+          machineType:    editingProcess.machineType,
+          oldMachines:    editingProcess.originalMachines,
+          newMachines:    machinesSelected,
           machineChanged: machinesSelected !== null,
         }),
       });
@@ -836,32 +937,35 @@ export default function LineLayoutPage() {
       if (json.success) {
         setCurrentLayout(json.data);
         setEditingProcess(null);
-        showToast("success", "Process আপডেট হয়েছে!");
+        showToast("success","Process আপডেট হয়েছে!");
       } else showToast("error", json.message);
     } finally { setProcEditSaving(false); }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
-    // FIX: outer container uses absolute positioning so scale doesn't clip content
     <div className="w-screen h-screen overflow-hidden bg-slate-100">
       <div
         style={{
-          transform: "scale(0.67)",
+          transform:       "scale(0.67)",
           transformOrigin: "top left",
-          width:  "149.25vw",
-          height: "149.25vh",
-          display: "flex",
-          flexDirection: "column",
-          overflow: "hidden",
+          width:           "149.25vw",
+          height:          "149.25vh",
+          display:         "flex",
+          flexDirection:   "column",
+          overflow:        "hidden",
         }}
         className="font-sans text-slate-800">
 
         <Toast toast={toast} />
+
         {showPicker && (
-          <MachineFloorPicker machineType={pForm.machineType}
+          <MachineFloorPicker
+            machineType={pForm.machineType}
             factory={effectiveFactory}
-            onConfirm={handleAddProcess} onCancel={() => setShowPicker(false)} />
+            onConfirm={handleAddProcess}
+            onCancel={() => setShowPicker(false)}
+          />
         )}
 
         {showEditPicker && editingProcess && (
@@ -884,8 +988,6 @@ export default function LineLayoutPage() {
                   <button type="button" onClick={() => setEditingProcess(null)}
                     className="text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
                 </div>
-
-                {/* Serial No */}
                 <LField label="Serial No">
                   <select value={editingProcess.serialNo}
                     onChange={(e) => setEditingProcess((p) => ({ ...p, serialNo: +e.target.value }))}
@@ -893,8 +995,6 @@ export default function LineLayoutPage() {
                     {SERIAL_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </LField>
-
-                {/* Process Name */}
                 <LField label="Process Name">
                   <select value={editingProcess.processName}
                     onChange={(e) => setEditingProcess((p) => ({ ...p, processName: e.target.value }))}
@@ -903,8 +1003,6 @@ export default function LineLayoutPage() {
                     {PROCESS_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
                   </select>
                 </LField>
-
-                {/* Machine Type */}
                 <LField label="Machine Type">
                   <select value={editingProcess.machineType}
                     onChange={(e) => setEditingProcess((p) => ({ ...p, machineType: e.target.value }))}
@@ -913,7 +1011,6 @@ export default function LineLayoutPage() {
                     {MACHINE_TYPES.map((m) => <option key={m} value={m}>{m}</option>)}
                   </select>
                 </LField>
-
                 {editingProcess.machineType && (() => {
                   const c = mc(editingProcess.machineType);
                   return (
@@ -923,24 +1020,22 @@ export default function LineLayoutPage() {
                     </div>
                   );
                 })()}
-
                 {editingProcess.machineType !== editingProcess.originalMachineType ? (
                   <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
-                    🔄 Machine type বদলেছে — পুরনো machines inventory তে ফিরে যাবে এবং নতুন floor থেকে নিতে হবে।
+                    🔄 Machine type বদলেছে — পুরনো machines inventory তে ফিরে যাবে এবং নতুন serial select করতে হবে।
                   </p>
                 ) : (
                   <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
                     Machine assignment অপরিবর্তিত। শুধু serial ও process name আপডেট হবে।
                   </p>
                 )}
-
                 <div className="flex gap-3 pt-1">
                   <button type="submit" disabled={procEditSaving || !editingProcess.processName || !editingProcess.machineType}
                     className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all">
                     {procEditSaving
                       ? "সেভ হচ্ছে..."
                       : editingProcess.machineType !== editingProcess.originalMachineType && editingProcess.machineType !== "HELPER"
-                        ? "✓ পরবর্তী → Floor select করুন"
+                        ? "✓ পরবর্তী → Serial select করুন"
                         : "✓ আপডেট করুন"}
                   </button>
                   <button type="button" onClick={() => setEditingProcess(null)}
@@ -1013,7 +1108,6 @@ export default function LineLayoutPage() {
                 {LINE_OPTIONS.map((l) => <option key={l} value={l}>Line {l}</option>)}
               </select>
             </div>
-
             {listLoading ? (
               <p className="text-slate-400 text-base animate-pulse text-center py-20">লোড হচ্ছে...</p>
             ) : layouts.length === 0 ? (
@@ -1044,10 +1138,10 @@ export default function LineLayoutPage() {
                       </div>
                       <div className="grid grid-cols-3 gap-2 text-center mb-4">
                         {[
-                          { label:"SMV",        val: l.smv,                  color:"text-slate-700" },
-                          { label:"Efficiency", val: `${l.planEfficiency}%`, color:"text-blue-700" },
-                          { label:"Manpower",   val: l.manpower,             color:"text-slate-700" },
-                          { label:"1Hr Target", val: l.oneHourTarget,         color:"text-emerald-700" },
+                          { label:"SMV",        val: l.smv,                  color:"text-slate-700"  },
+                          { label:"Efficiency", val: `${l.planEfficiency}%`, color:"text-blue-700"   },
+                          { label:"Manpower",   val: l.manpower,             color:"text-slate-700"  },
+                          { label:"1Hr Target", val: l.oneHourTarget,        color:"text-emerald-700"},
                           { label:`Daily (${l.workingHours}h)`, val: l.dailyTarget, color:"text-violet-700" },
                           { label:"Op/Hel/SS",  val: `${l.operator}/${l.helper}/${l.seamSealing}`, color:"text-slate-700" },
                         ].map(({ label, val, color }) => (
@@ -1119,7 +1213,8 @@ export default function LineLayoutPage() {
                   <LField label="Line Sketch / Image (optional)">
                     <div onClick={() => fileRef.current?.click()}
                       className="border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-xl p-5 cursor-pointer transition-all text-center bg-slate-50">
-                      {sketchPreview ? <img src={sketchPreview} alt="sketch" className="max-h-36 mx-auto rounded-lg object-contain" />
+                      {sketchPreview
+                        ? <img src={sketchPreview} alt="sketch" className="max-h-36 mx-auto rounded-lg object-contain" />
                         : <p className="text-slate-400 text-base">ক্লিক করে image select করুন</p>}
                       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleSketchChange} />
                     </div>
@@ -1138,18 +1233,15 @@ export default function LineLayoutPage() {
 
         {/* ══ BUILDER VIEW ═════════════════════════════════════════════════════ */}
         {view === "builder" && currentLayout && (
-          // FIX: use explicit overflow-hidden + min-h-0 so flex children scroll correctly
           <div className="flex flex-1 overflow-hidden min-h-0">
 
             {/* LEFT panel */}
             <div className="w-[440px] shrink-0 border-r-2 border-slate-200 flex flex-col bg-white shadow-sm overflow-hidden">
-
-              {/* Tab Bar */}
               <div className="flex border-b-2 border-slate-200 shrink-0">
                 {[
-                  { key:"edit",    label:"✏️ Edit" },
+                  { key:"edit",    label:"✏️ Edit"    },
                   { key:"process", label:"＋ Process" },
-                  { key:"list",    label:"☰ List" },
+                  { key:"list",    label:"☰ List"     },
                 ].map((t) => (
                   <button key={t.key} onClick={() => setBuilderTab(t.key)}
                     className={`flex-1 py-3 text-sm font-bold transition-all border-b-2
@@ -1168,9 +1260,9 @@ export default function LineLayoutPage() {
                     <span className="text-base text-blue-700 font-black">{currentLayout.floor} · Line {currentLayout.lineNo}</span>
                     <div className="grid grid-cols-3 gap-1.5 text-center mt-2">
                       {[
-                        { l:"1Hr Tgt", v: currentLayout.oneHourTarget, c:"text-emerald-700" },
+                        { l:"1Hr Tgt",           v: currentLayout.oneHourTarget, c:"text-emerald-700" },
                         { l:`Daily(${currentLayout.workingHours}h)`, v: currentLayout.dailyTarget, c:"text-violet-700" },
-                        { l:"Manpower", v: currentLayout.manpower, c:"text-blue-700" },
+                        { l:"Manpower",           v: currentLayout.manpower,     c:"text-blue-700"    },
                       ].map(({ l, v, c }) => (
                         <div key={l} className="bg-white border border-slate-200 rounded-lg px-2 py-2">
                           <div className="text-xs text-slate-400 font-medium">{l}</div>
@@ -1277,7 +1369,11 @@ export default function LineLayoutPage() {
                   <button onClick={openPicker}
                     disabled={addingProcess || !pForm.processName || !pForm.machineType}
                     className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-3.5 rounded-xl text-base uppercase tracking-wider transition-all shadow-sm">
-                    {addingProcess ? "যোগ হচ্ছে..." : pForm.machineType === "HELPER" ? "+ HELPER যোগ করুন" : "+ Machine select করে যোগ করুন"}
+                    {addingProcess
+                      ? "যোগ হচ্ছে..."
+                      : pForm.machineType === "HELPER"
+                        ? "+ HELPER যোগ করুন"
+                        : "+ Serial select করে যোগ করুন"}
                   </button>
                 </div>
               )}
@@ -1293,13 +1389,14 @@ export default function LineLayoutPage() {
                   ) : (
                     <div className="space-y-2">
                       {[...currentLayout.processes].sort((a,b)=>a.serialNo-b.serialNo).map((p) => {
-                        const c = mc(p.machineType);
+                        const c       = mc(p.machineType);
+                        const serials = (p.machines || []).filter((m) => m.serialNumber).map((m) => m.serialNumber);
                         return (
                           <div key={p._id} className="rounded-lg px-3 py-2.5 border-l-4"
                             style={{ background: c.bg, borderLeftColor: c.accent, borderTop:`1px solid rgba(0,0,0,0.07)`, borderRight:`1px solid rgba(0,0,0,0.07)`, borderBottom:`1px solid rgba(0,0,0,0.07)` }}>
                             <div className="flex items-start justify-between gap-2">
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5 mb-1">
+                                <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                                   <span className="text-xs font-black px-2 py-0.5 rounded shrink-0"
                                     style={{ background: c.badge, color: c.badgeText }}>
                                     #{p.serialNo}
@@ -1308,11 +1405,22 @@ export default function LineLayoutPage() {
                                     {p.processName}
                                   </span>
                                 </div>
-                                <div className="text-xs font-semibold" style={{ color: c.accent }}>
+                                <div className="text-xs font-semibold mb-1" style={{ color: c.accent }}>
                                   {p.machineType} · {p.machines?.map((m) => m.fromFloor).join(", ") || "No machine"}
                                 </div>
+                                {/* Serial numbers */}
+                                {serials.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-1">
+                                    {serials.map((sn) => (
+                                      <span key={sn}
+                                        className="text-[10px] font-mono font-black px-2 py-0.5 rounded"
+                                        style={{ background: `${c.accent}18`, color: c.accent, border: `1px solid ${c.accent}35` }}>
+                                        {sn}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
                               </div>
-                              {/* Edit + Waste buttons */}
                               <div className="flex gap-1.5 shrink-0">
                                 <button
                                   onClick={() => setEditingProcess({
@@ -1341,7 +1449,7 @@ export default function LineLayoutPage() {
               )}
             </div>
 
-            {/* RIGHT — Layout Grid: FIX = overflow-hidden so LayoutGrid controls its own scroll */}
+            {/* RIGHT — Layout Grid */}
             <div className="flex-1 overflow-hidden flex flex-col min-h-0 bg-white">
               <div className="px-4 py-2.5 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2">
@@ -1351,10 +1459,10 @@ export default function LineLayoutPage() {
                 </div>
                 <div className="flex gap-2 text-sm">
                   {[
-                    { l:"Buyer",  v: currentLayout.buyer,          c:"text-blue-700"    },
-                    { l:"1Hr",    v: currentLayout.oneHourTarget,   c:"text-emerald-700" },
-                    { l:"Daily",  v: currentLayout.dailyTarget,     c:"text-violet-700"  },
-                    { l:"MP",     v: currentLayout.manpower,        c:"text-amber-700"   },
+                    { l:"Buyer", v: currentLayout.buyer,        c:"text-blue-700"    },
+                    { l:"1Hr",   v: currentLayout.oneHourTarget, c:"text-emerald-700" },
+                    { l:"Daily", v: currentLayout.dailyTarget,   c:"text-violet-700"  },
+                    { l:"MP",    v: currentLayout.manpower,      c:"text-amber-700"   },
                   ].map(({ l, v, c }) => (
                     <span key={l} className="bg-white border border-slate-200 px-3 py-1 rounded-full">
                       <span className="text-slate-400">{l}: </span>
@@ -1363,7 +1471,6 @@ export default function LineLayoutPage() {
                   ))}
                 </div>
               </div>
-              {/* FIX: flex-1 + min-h-0 ensures LayoutGrid fills remaining space and scrolls */}
               <div className="flex-1 min-h-0">
                 <LayoutGrid
                   processes={currentLayout.processes || []}
@@ -1383,7 +1490,7 @@ export default function LineLayoutPage() {
   );
 }
 
-// ─── Light-theme Field / Input / Select helpers ───────────────────────────────
+// ─── Field / Input / Select helpers ──────────────────────────────────────────
 function LField({ label, children }) {
   return (
     <div>

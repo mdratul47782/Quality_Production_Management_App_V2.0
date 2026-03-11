@@ -7,23 +7,24 @@ const processEntrySchema = new mongoose.Schema({
   machineType: { type: String, required: true },
   machines: [
     {
-      machineId:   { type: mongoose.Schema.Types.ObjectId, ref: "Machine" },
-      machineName: { type: String },
-      fromFloor:   { type: String },
+      machineId:    { type: mongoose.Schema.Types.ObjectId, ref: "Machine" },
+      machineName:  { type: String },
+      fromFloor:    { type: String },
+      serialNumber: { type: String, default: "" }, // ← individual machine serial
     },
   ],
 });
 
 const lineLayoutSchema = new mongoose.Schema(
   {
-    factory:        { type: String, default: "" },   // e.g. "K-2"
+    factory:        { type: String, default: "" },
     floor:          { type: String, required: true },
     lineNo:         { type: String, required: true },
     buyer:          { type: String, required: true },
     style:          { type: String },
     item:           { type: String },
     smv:            { type: Number },
-    planEfficiency: { type: Number },   // 0–100
+    planEfficiency: { type: Number },
     operator:       { type: Number, default: 0 },
     helper:         { type: Number, default: 0 },
     seamSealing:    { type: Number, default: 0 },
