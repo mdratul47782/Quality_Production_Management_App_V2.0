@@ -5,8 +5,11 @@ import { lineLayoutModel } from "@/models/lineLayout-model";
 import { machineModel }    from "@/models/machine-model";
 
 // ── Helper: mark machine units Running / Idle in inventory ────────────────────
-// wasteFloor: optional — if provided, also moves the unit to that floor
-async function updateMachineStatuses(entries, newStatus, wasteFloor = null) {
+// floorOverride: when provided, also moves the unit's floorName to that floor.
+//   • For "Running" → pass the layout's floor so A4 machine shows as Running on A2
+//   • For "Idle" (waste) → pass the wasteFloor so it shows Idle on the waste floor
+//   • For "Idle" (delete/no floor change) → pass null to keep machine on its current floor
+async function updateMachineStatuses(entries, newStatus, floorOverride = null) {
   if (!entries || entries.length === 0) return;
   for (const entry of entries) {
     if (!entry.serialNumber) continue;
@@ -18,9 +21,8 @@ async function updateMachineStatuses(entries, newStatus, wasteFloor = null) {
       );
       if (unitIdx < 0) continue;
       machine.units[unitIdx].status = newStatus;
-      // ← KEY FIX: move the unit to the waste floor when specified
-      if (wasteFloor) {
-        machine.units[unitIdx].floorName = wasteFloor;
+      if (floorOverride) {
+        machine.units[unitIdx].floorName = floorOverride;
       }
       await machine.save();
     } catch (e) {
@@ -29,20 +31,25 @@ async function updateMachineStatuses(entries, newStatus, wasteFloor = null) {
   }
 }
 
-function calcTargets(smv, eff, operator, hours) {
-  const e = (parseFloat(eff) || 0) / 100;
+// FIX: correct formula — manpower = operator + helper + seamSealing
+// dailyTarget = (manpower × hours × 60 / smv) × (eff/100)
+// oneHourTarget = dailyTarget / hours
+function calcTargets(smv, planEfficiency, operator, helper, seamSealing, workingHours) {
+  const manpower = (parseInt(operator) || 0) + (parseInt(helper) || 0) + (parseInt(seamSealing) || 0);
+  const e = (parseFloat(planEfficiency) || 0) / 100;
   const s = parseFloat(smv) || 0;
-  const o = parseInt(operator) || 0;
-  const h = parseInt(hours) || 8;
-  const oneHour = s > 0 ? Math.round((60 / s) * e * o) : 0;
-  return { oneHourTarget: oneHour, dailyTarget: Math.max(0, oneHour * h - 2) };
+  const h = parseInt(workingHours) || 8;
+  if (s === 0 || manpower === 0) return { manpower, oneHourTarget: 0, dailyTarget: 0 };
+  const dailyTarget   = Math.round((manpower * h * 60 / s) * e);
+  const oneHourTarget = Math.round(dailyTarget / h);
+  return { manpower, oneHourTarget, dailyTarget };
 }
 
 // ── GET /api/line-layouts/[id] ────────────────────────────────────────────────
 export async function GET(request, { params }) {
   try {
     await dbConnect();
-    const { id } = await params;                          // ← await params
+    const { id } = await params;
     const layout = await lineLayoutModel.findById(id).lean();
     if (!layout)
       return NextResponse.json({ success: false, message: "Layout পাওয়া যায়নি।" }, { status: 404 });
@@ -56,21 +63,20 @@ export async function GET(request, { params }) {
 export async function DELETE(request, { params }) {
   try {
     await dbConnect();
-    const { id } = await params;                          // ← await params
+    const { id } = await params;
     const layout = await lineLayoutModel.findById(id);
     if (!layout)
       return NextResponse.json({ success: false, message: "Layout পাওয়া যায়নি।" }, { status: 404 });
 
-    // Return all machine serials to Idle (at their current floor) before deleting
     for (const proc of layout.processes || []) {
-      await updateMachineStatuses(
-        (proc.machines || []).map((m) => ({
-          machineId:    m.machineId,
-          serialNumber: m.serialNumber,
-        })),
-        "Idle"
-        // no wasteFloor here — machines stay at whatever floor they are on
-      );
+      // FIX: restore each machine to its original floor (fromFloor) when layout is deleted
+      for (const m of (proc.machines || [])) {
+        await updateMachineStatuses(
+          [{ machineId: m.machineId, serialNumber: m.serialNumber }],
+          "Idle",
+          m.fromFloor || null
+        );
+      }
     }
 
     await lineLayoutModel.findByIdAndDelete(id);
@@ -84,7 +90,7 @@ export async function DELETE(request, { params }) {
 export async function PATCH(request, { params }) {
   try {
     await dbConnect();
-    const { id } = await params;                          // ← await params
+    const { id } = await params;
     const body   = await request.json();
     const layout = await lineLayoutModel.findById(id);
     if (!layout)
@@ -95,12 +101,15 @@ export async function PATCH(request, { params }) {
       const { serialNo, processName, machineType, machinesSelected } = body;
 
       if (machinesSelected && machinesSelected.length > 0) {
+        // FIX: pass layout.floor so floorName moves to the layout floor (e.g. A2),
+        // not stays on the source floor (e.g. A4). Inventory shows Running on A2 correctly.
         await updateMachineStatuses(
           machinesSelected.map((m) => ({
             machineId:    m.machineId,
             serialNumber: m.serialNumber,
           })),
-          "Running"
+          "Running",
+          layout.floor
         );
       }
 
@@ -126,7 +135,6 @@ export async function PATCH(request, { params }) {
       const proc = layout.processes.find((p) => String(p._id) === processId);
 
       if (proc) {
-        // wasteFloor passed so the unit moves to the selected floor, not stays at original
         await updateMachineStatuses(
           (proc.machines || []).map((m) => ({
             machineId:    m.machineId,
@@ -154,20 +162,23 @@ export async function PATCH(request, { params }) {
         return NextResponse.json({ success: false, message: "Process পাওয়া যায়নি।" }, { status: 404 });
 
       if (machineChanged) {
-        await updateMachineStatuses(
-          (oldMachines || []).map((m) => ({
-            machineId:    m.machineId,
-            serialNumber: m.serialNumber,
-          })),
-          "Idle"
-        );
+        // FIX: restore each old machine to its original fromFloor, not leave on layout floor
+        for (const m of (oldMachines || [])) {
+          await updateMachineStatuses(
+            [{ machineId: m.machineId, serialNumber: m.serialNumber }],
+            "Idle",
+            m.fromFloor || null
+          );
+        }
         if (newMachines && newMachines.length > 0) {
+          // FIX: same as add_process — move floorName to layout floor when Running
           await updateMachineStatuses(
             newMachines.map((m) => ({
               machineId:    m.machineId,
               serialNumber: m.serialNumber,
             })),
-            "Running"
+            "Running",
+            layout.floor
           );
         }
         layout.processes[procIdx].machines = (newMachines || []).map((m) => ({
@@ -187,23 +198,36 @@ export async function PATCH(request, { params }) {
     }
 
     // ── ACTION: update_header ────────────────────────────────────────────────
+    // FIX: use correct formula, accept sketchUrl for image updates
     if (body.action === "update_header") {
       const {
-        buyer, style, item, smv, planEfficiency,
-        operator, helper, seamSealing, workingHours,
+        buyer, style, item,
+        smv, planEfficiency,
+        operator, helper, seamSealing,
+        workingHours,
+        sketchUrl,   // ← NEW: optional image url from upload
       } = body;
-      const manpower = (parseInt(operator)||0) + (parseInt(helper)||0) + (parseInt(seamSealing)||0);
-      const { oneHourTarget, dailyTarget } = calcTargets(smv, planEfficiency, operator, workingHours);
+
+      // FIX: use the corrected calcTargets (manpower includes helper + seamSealing)
+      const { manpower, oneHourTarget, dailyTarget } = calcTargets(
+        smv, planEfficiency, operator, helper, seamSealing, workingHours
+      );
 
       Object.assign(layout, {
-        buyer, style, item,
+        buyer,
+        style,
+        item,
         smv:            parseFloat(smv)            || 0,
         planEfficiency: parseFloat(planEfficiency) || 0,
         operator:       parseInt(operator)         || 0,
         helper:         parseInt(helper)           || 0,
         seamSealing:    parseInt(seamSealing)      || 0,
         workingHours:   parseInt(workingHours)     || 8,
-        manpower, oneHourTarget, dailyTarget,
+        manpower,
+        oneHourTarget,
+        dailyTarget,
+        // Only update sketchUrl if a value was passed (empty string clears it, undefined keeps old)
+        ...(sketchUrl !== undefined ? { sketchUrl } : {}),
       });
 
       await layout.save();

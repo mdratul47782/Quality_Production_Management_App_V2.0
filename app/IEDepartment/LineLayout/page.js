@@ -12,8 +12,6 @@ const BUYER_OPTIONS   = ["Decathlon - knit","Decathlon - woven","Walmart","Colum
 const HOURS_OPTIONS   = Array.from({ length: 14 }, (_, i) => i + 1);
 const SERIAL_OPTIONS  = Array.from({ length: 60 }, (_, i) => i + 1);
 
-// Process names are now loaded from /api/process-names (DB-driven)
-
 const MACHINE_TYPES = [
   "SINGLE NDL (PLAIN M/C)","SINGLE NDL (TOP FEED) M/C","SINGLE NDL (NDL FEED) M/C",
   "SINGLE NDL (CUFFS) M/C","DLM SINGLE NEEDLE VERTICAL CUTTER","DOUBLE NDL",
@@ -42,7 +40,6 @@ const MACHINE_COLORS = {
 function mc(type) { return MACHINE_COLORS[type] || MACHINE_COLORS["default"]; }
 
 // FIXED Formula: (manpower × hours × 60 / smv) × (eff/100)
-// Example: 47 op × 10h × 60min / 50.47smv × 0.70eff = 391 daily, 39 per hour
 function calcTargets(smv, eff, operator, helper, seamSealing, hours) {
   const manpower = (parseInt(operator)||0) + (parseInt(helper)||0) + (parseInt(seamSealing)||0);
   const e = (parseFloat(eff) || 0) / 100;
@@ -54,7 +51,7 @@ function calcTargets(smv, eff, operator, helper, seamSealing, hours) {
   return { manpower, oneHourTarget, dailyTarget };
 }
 
-// SearchableSelect — dropdown with live filter search
+// SearchableSelect
 function SearchableSelect({ value, onChange, options, placeholder = "— Select —", className = "" }) {
   const [open,  setOpen]  = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -203,12 +200,10 @@ function WasteFloorPicker({ processEntry, layoutFloor, onConfirm, onCancel }) {
 }
 
 // ─── Machine Serial Picker Modal ──────────────────────────────────────────────
-// Shows individual idle machine units grouped by machine type + floor.
-// User selects specific serial numbers to assign to this process.
 function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) {
-  const [idleUnits, setIdleUnits] = useState([]); // flat list of idle units
+  const [idleUnits, setIdleUnits] = useState([]);
   const [loading, setLoading]     = useState(true);
-  const [selected, setSelected]   = useState([]); // Array of unit objects
+  const [selected, setSelected]   = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -220,10 +215,8 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
         const res  = await fetch(url);
         const json = await res.json();
         if (json.success) {
-          // Collect all idle units from matching machine type(s)
           const allIdle = [];
           for (const machine of (json.data || [])) {
-            // For HELPER: show all machine types; otherwise filter by type
             if (machineType !== "HELPER" && machine.machineName !== machineType) continue;
             for (const unit of (machine.units || [])) {
               if (unit.status === "Idle") {
@@ -236,7 +229,6 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
               }
             }
           }
-          // Sort: by machineName then serialNumber
           allIdle.sort((a, b) =>
             a.machineName.localeCompare(b.machineName) ||
             a.serialNumber.localeCompare(b.serialNumber)
@@ -266,7 +258,6 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
     );
   }
 
-  // Group idle units by floor for display
   const byFloor = idleUnits.reduce((acc, unit) => {
     const key = unit.fromFloor;
     if (!acc[key]) acc[key] = [];
@@ -279,8 +270,6 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
       <div className="bg-white border border-slate-300 rounded-2xl w-full max-w-xl shadow-2xl">
         <div className="h-1 bg-gradient-to-r from-blue-500 to-violet-500 rounded-t-2xl" />
         <div className="p-6">
-
-          {/* Header */}
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="font-bold text-slate-800 text-lg">Serial Number select করুন</h3>
@@ -291,22 +280,18 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
             </span>
           </div>
 
-          {/* Body */}
           {loading ? (
             <p className="text-slate-400 text-base animate-pulse py-10 text-center">লোড হচ্ছে...</p>
           ) : idleUnits.length === 0 ? (
             <div className="py-10 text-center">
               <p className="text-4xl mb-3">🔍</p>
               <p className="text-slate-500 text-base font-medium">কোনো idle machine পাওয়া যায়নি।</p>
-              <p className="text-slate-400 text-sm mt-1">
-                Machine Inventory তে idle unit যোগ করুন।
-              </p>
+              <p className="text-slate-400 text-sm mt-1">Machine Inventory তে idle unit যোগ করুন।</p>
             </div>
           ) : (
             <div className="max-h-80 overflow-y-auto space-y-4 pr-1">
               {Object.entries(byFloor).map(([floor, units]) => (
                 <div key={floor}>
-                  {/* Floor label */}
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-xs font-black text-slate-500 uppercase tracking-widest">Floor</span>
                     <span className="text-sm font-black text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-0.5 rounded-full">
@@ -314,8 +299,6 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
                     </span>
                     <span className="text-xs text-slate-400">{units.length} idle</span>
                   </div>
-
-                  {/* Serial number chips */}
                   <div className="flex flex-wrap gap-2 pl-1">
                     {units.map((unit) => {
                       const sel = isSelected(unit);
@@ -346,7 +329,6 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
             </div>
           )}
 
-          {/* Selected summary */}
           {selected.length > 0 && (
             <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
               <p className="text-xs text-blue-600 uppercase tracking-widest font-bold mb-2">
@@ -364,7 +346,6 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
             </div>
           )}
 
-          {/* Actions */}
           <div className="flex gap-3 mt-5">
             <button
               disabled={selected.length === 0}
@@ -442,13 +423,11 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
     onMoveToSlot(fromId, slotSerial);
   }
 
-  // ── Filled Process Cell ───────────────────────────────────────────────────
   function ProcessCell({ entry }) {
     const c      = mc(entry.machineType);
     const key    = `id:${entry._id}`;
     const isOver = dragOverKey === key;
 
-    // Collect serial numbers assigned to this process entry
     const serials = (entry.machines || [])
       .filter((m) => m.serialNumber)
       .map((m) => m.serialNumber);
@@ -482,12 +461,10 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
         </button>
         <div className="px-4 py-2">
           <div className="flex items-start gap-2 mb-1.5 flex-wrap">
-            {/* Layout serial number (position in line) */}
             <span className="text-xs font-black px-2 py-0.5 rounded shrink-0"
               style={{ background: isOver ? "#1d4ed8" : c.badge, color: c.badgeText }}>
               {entry.serialNo}
             </span>
-            {/* Floor badges */}
             {entry.machineType !== "HELPER" && (entry.machines || []).map((m, i) => (
               <span key={i} className="text-xs px-2 py-0.5 rounded font-bold shrink-0"
                 style={{ background: c.accent, color: "#fff", opacity: 0.9 }}>
@@ -495,31 +472,20 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
               </span>
             ))}
           </div>
-
           <p className="text-sm font-semibold leading-snug mb-1.5" style={{ color: isOver ? "#1e3a5f" : c.text }}>
             {entry.processName}
           </p>
-
           <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: isOver ? "#1d4ed8" : c.accent }}>
             {entry.machineType}
           </p>
-
-          {/* ── Serial numbers — shown on right side of card ── */}
           {serials.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1 border-t pt-1.5" style={{ borderColor: `${c.accent}30` }}>
               <span className="text-[10px] uppercase tracking-widest font-bold mr-1" style={{ color: `${c.accent}99` }}>
                 S/N:
               </span>
               {serials.map((sn) => (
-                <span
-                  key={sn}
-                  className="text-[11px] font-mono font-black px-2 py-0.5 rounded"
-                  style={{
-                    background: `${c.accent}18`,
-                    color:       c.accent,
-                    border:      `1px solid ${c.accent}40`,
-                  }}
-                >
+                <span key={sn} className="text-[11px] font-mono font-black px-2 py-0.5 rounded"
+                  style={{ background: `${c.accent}18`, color: c.accent, border: `1px solid ${c.accent}40` }}>
                   {sn}
                 </span>
               ))}
@@ -530,7 +496,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
     );
   }
 
-  // ── Empty droppable slot ──────────────────────────────────────────────────
   function EmptySlot({ serialNo }) {
     const key    = `slot:${serialNo}`;
     const isOver = dragOverKey === key;
@@ -540,22 +505,17 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
         onDragLeave={handleDragLeave}
         onDrop={(e)      => handleDropOnSlot(e, serialNo)}
         style={{
-          minHeight:   54,
-          borderRadius: 4,
-          marginBottom: 3,
-          border:       isOver ? "2px dashed #1d4ed8" : "2px dashed #cbd5e1",
-          background:   isOver ? "#eff6ff" : "transparent",
-          display:      "flex",
-          alignItems:   "center",
+          minHeight:      54,
+          borderRadius:   4,
+          marginBottom:   3,
+          border:         isOver ? "2px dashed #1d4ed8" : "2px dashed #cbd5e1",
+          background:     isOver ? "#eff6ff" : "transparent",
+          display:        "flex",
+          alignItems:     "center",
           justifyContent: "center",
-          transition:   "border-color 0.1s, background 0.1s",
+          transition:     "border-color 0.1s, background 0.1s",
         }}>
-        <span style={{
-          fontSize:    11,
-          fontWeight:  700,
-          color:       isOver ? "#1d4ed8" : "#94a3b8",
-          letterSpacing: "0.05em",
-        }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: isOver ? "#1d4ed8" : "#94a3b8", letterSpacing: "0.05em" }}>
           {isOver ? `▼ serial ${serialNo} এ রাখুন` : `# ${serialNo} — খালি`}
         </span>
       </div>
@@ -573,7 +533,7 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
         />
       )}
 
-      {/* Sticky header info bar */}
+      {/* Sticky header info bar — reads from layoutInfo which is always currentLayout */}
       {layoutInfo && (
         <div className="sticky top-0 z-20 bg-[#f0f4f8] border-b-2 border-slate-300">
           <div className="text-center py-2 border-b border-slate-300 flex items-center justify-center gap-3">
@@ -612,7 +572,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
         </div>
       )}
 
-      {/* Machine type legend */}
       {Object.keys(summary).length > 0 && (
         <div className="px-3 py-2 border-b border-slate-200 bg-slate-50 flex flex-wrap gap-2">
           {Object.entries(summary).map(([type, count]) => {
@@ -627,7 +586,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
         </div>
       )}
 
-      {/* Main grid */}
       {rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-slate-400 gap-2">
           <span className="text-4xl">📋</span>
@@ -763,7 +721,6 @@ function DragSerialList({ processes, layoutId, onUpdate, showToast }) {
               <span className="text-sm flex-1 leading-tight font-medium" style={{ color: c.text }}>
                 {p.processName.substring(0, 36)}{p.processName.length > 36 ? "…" : ""}
               </span>
-              {/* Serial numbers inline */}
               {serials.length > 0 && (
                 <div className="flex gap-1 shrink-0">
                   {serials.map((sn) => (
@@ -817,10 +774,19 @@ export default function LineLayoutPage() {
 
   const [builderTab, setBuilderTab] = useState("process");
   const [editSaving, setEditSaving] = useState(false);
-  const [editForm, setEditForm]     = useState({
+
+  // ── FIX: editForm now includes sketchUrl so image can be updated ──
+  const [editForm, setEditForm] = useState({
     buyer:"", style:"", item:"", smv:"", planEfficiency:"",
     operator:"", helper:"", seamSealing:"", workingHours:8,
+    sketchUrl:"",
   });
+
+  // Sketch editing state for header edit tab
+  const [editSketchFile, setEditSketchFile]       = useState(null);
+  const [editSketchPreview, setEditSketchPreview] = useState("");
+  const [editUploading, setEditUploading]         = useState(false);
+  const editFileRef = useRef();
 
   const editTargets = { ...calcTargets(editForm.smv, editForm.planEfficiency, editForm.operator, editForm.helper, editForm.seamSealing, editForm.workingHours) };
   const [editingProcess, setEditingProcess] = useState(null);
@@ -830,7 +796,6 @@ export default function LineLayoutPage() {
   const [toast, setToast] = useState(null);
   function showToast(type, msg) { setToast({ type, msg }); setTimeout(() => setToast(null), 3000); }
 
-  // FIXED: pass helper + seamSealing to calcTargets so manpower = op+helper+ss
   const { manpower, oneHourTarget, dailyTarget } = calcTargets(
     form.smv, form.planEfficiency, form.operator, form.helper, form.seamSealing, form.workingHours
   );
@@ -853,7 +818,6 @@ export default function LineLayoutPage() {
 
   useEffect(() => { if (view === "list") loadLayouts(); }, [view, filterFloor, filterLine, effectiveFactory]);
 
-  // Load process names from DB
   useEffect(() => {
     async function load() {
       setLoadingPNames(true);
@@ -866,13 +830,23 @@ export default function LineLayoutPage() {
     load();
   }, []);
 
+  // ── FIX: prefillEditForm now also sets sketchUrl and resets sketch edit state ──
   function prefillEditForm(l) {
     setEditForm({
-      buyer: l.buyer??"", style: l.style??"", item: l.item??"",
-      smv: l.smv??"", planEfficiency: l.planEfficiency??"",
-      operator: l.operator??"", helper: l.helper??"",
-      seamSealing: l.seamSealing??"", workingHours: l.workingHours??8,
+      buyer:          l.buyer          ?? "",
+      style:          l.style          ?? "",
+      item:           l.item           ?? "",
+      smv:            l.smv            ?? "",
+      planEfficiency: l.planEfficiency ?? "",
+      operator:       l.operator       ?? "",
+      helper:         l.helper         ?? "",
+      seamSealing:    l.seamSealing    ?? "",
+      workingHours:   l.workingHours   ?? 8,
+      sketchUrl:      l.sketchUrl      ?? "",
     });
+    // reset any pending sketch edit
+    setEditSketchFile(null);
+    setEditSketchPreview("");
   }
 
   async function handleSketchChange(e) {
@@ -880,6 +854,14 @@ export default function LineLayoutPage() {
     if (!file) return;
     setSketchFile(file);
     setSketchPreview(URL.createObjectURL(file));
+  }
+
+  // For header-edit tab sketch change
+  async function handleEditSketchChange(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setEditSketchFile(file);
+    setEditSketchPreview(URL.createObjectURL(file));
   }
 
   async function uploadSketch(file) {
@@ -1028,6 +1010,56 @@ export default function LineLayoutPage() {
         showToast("success","Process আপডেট হয়েছে!");
       } else showToast("error", json.message);
     } finally { setProcEditSaving(false); }
+  }
+
+  // ── FIX: Header update with correct formula + optional image update ──
+  async function handleUpdateHeader(e) {
+    e.preventDefault();
+    if (!currentLayout) return;
+    setEditSaving(true);
+    try {
+      // 1. Upload new sketch if user selected one
+      let finalSketchUrl = editForm.sketchUrl;
+      if (editSketchFile) {
+        setEditUploading(true);
+        finalSketchUrl = await uploadSketch(editSketchFile);
+        setEditUploading(false);
+      }
+
+      // 2. Compute targets with CORRECT formula (manpower = op+helper+ss)
+      const { manpower: mp, oneHourTarget: oht, dailyTarget: dt } = calcTargets(
+        editForm.smv, editForm.planEfficiency,
+        editForm.operator, editForm.helper, editForm.seamSealing,
+        editForm.workingHours
+      );
+
+      const res  = await fetch(`/api/line-layouts/${currentLayout._id}`, {
+        method:"PATCH", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          action:         "update_header",
+          buyer:          editForm.buyer,
+          style:          editForm.style,
+          item:           editForm.item,
+          smv:            editForm.smv,
+          planEfficiency: editForm.planEfficiency,
+          operator:       editForm.operator,
+          helper:         editForm.helper,
+          seamSealing:    editForm.seamSealing,
+          workingHours:   editForm.workingHours,
+          sketchUrl:      finalSketchUrl,   // ← pass new or existing url
+          manpower:       mp,
+          oneHourTarget:  oht,
+          dailyTarget:    dt,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        // ── FIX: update currentLayout with returned data so grid header refreshes immediately ──
+        setCurrentLayout(json.data);
+        prefillEditForm(json.data);
+        showToast("success","Header আপডেট হয়েছে!");
+      } else showToast("error", json.message);
+    } finally { setEditSaving(false); setEditUploading(false); }
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -1289,7 +1321,6 @@ export default function LineLayoutPage() {
                       <LField key={key} label={label}><LInput type="number" value={form[key]} onChange={(v) => setForm((p) => ({...p,[key]:v}))} placeholder="0" /></LField>
                     ))}
                   </div>
-                  {/* FIXED target display with formula shown */}
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
                     <p className="text-xs text-slate-400 uppercase tracking-widest mb-1 font-semibold">Target Preview</p>
                     <p className="text-xs text-slate-500 mb-3 font-mono">({manpower} × {form.workingHours}h × 60 / {form.smv || "SMV"}) × {form.planEfficiency || 0}%</p>
@@ -1352,6 +1383,7 @@ export default function LineLayoutPage() {
                 <div className="flex-1 overflow-y-auto min-h-0">
                   <div className="bg-blue-50 border-b border-blue-200 px-4 py-3">
                     <span className="text-base text-blue-700 font-black">{currentLayout.floor} · Line {currentLayout.lineNo}</span>
+                    {/* FIX: show live values from currentLayout, not stale editTargets */}
                     <div className="grid grid-cols-3 gap-1.5 text-center mt-2">
                       {[
                         { l:"1Hr Tgt",           v: currentLayout.oneHourTarget, c:"text-emerald-700" },
@@ -1365,19 +1397,9 @@ export default function LineLayoutPage() {
                       ))}
                     </div>
                   </div>
-                  <form onSubmit={async (e) => {
-                    e.preventDefault(); setEditSaving(true);
-                    try {
-                      const { manpower: mp, oneHourTarget: oht, dailyTarget: dt } = calcTargets(editForm.smv, editForm.planEfficiency, editForm.operator, editForm.helper, editForm.seamSealing, editForm.workingHours);
-                      const res  = await fetch(`/api/line-layouts/${currentLayout._id}`, {
-                        method:"PATCH", headers:{"Content-Type":"application/json"},
-                        body: JSON.stringify({ action:"update_header", ...editForm, manpower: mp, oneHourTarget: oht, dailyTarget: dt }),
-                      });
-                      const json = await res.json();
-                      if (json.success) { setCurrentLayout(json.data); showToast("success","Header আপডেট হয়েছে!"); }
-                      else showToast("error", json.message);
-                    } finally { setEditSaving(false); }
-                  }} className="p-4 space-y-4">
+
+                  {/* ── FIX: use handleUpdateHeader which uses correct formula + image upload ── */}
+                  <form onSubmit={handleUpdateHeader} className="p-4 space-y-4">
                     <p className="text-sm text-amber-600 uppercase tracking-widest font-bold">Style পরিবর্তন করুন</p>
                     <div className="grid grid-cols-2 gap-3">
                       <LField label="Buyer"><LSelect value={editForm.buyer} onChange={(v) => setEditForm((p) => ({...p,buyer:v}))} options={BUYER_OPTIONS} placeholder="— Buyer —" /></LField>
@@ -1399,6 +1421,52 @@ export default function LineLayoutPage() {
                         {HOURS_OPTIONS.map((h) => <option key={h} value={h}>{h} ঘণ্টা</option>)}
                       </select>
                     </LField>
+
+                    {/* ── NEW: Sketch image edit section ── */}
+                    <LField label="Line Sketch / Image">
+                      <div className="space-y-2">
+                        {/* Show current image if exists */}
+                        {(editSketchPreview || editForm.sketchUrl) && (
+                          <div className="relative">
+                            <img
+                              src={editSketchPreview || editForm.sketchUrl}
+                              alt="Current sketch"
+                              className="w-full max-h-32 object-contain rounded-lg border border-slate-200 bg-slate-50"
+                            />
+                            {/* Remove / clear image button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditSketchFile(null);
+                                setEditSketchPreview("");
+                                setEditForm((p) => ({ ...p, sketchUrl: "" }));
+                              }}
+                              className="absolute top-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs font-black flex items-center justify-center shadow"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        )}
+                        <div
+                          onClick={() => editFileRef.current?.click()}
+                          className="border-2 border-dashed border-slate-300 hover:border-amber-400 rounded-xl p-3 cursor-pointer transition-all text-center bg-slate-50"
+                        >
+                          <p className="text-slate-400 text-sm">
+                            {editSketchPreview || editForm.sketchUrl
+                              ? "🔄 নতুন image দিয়ে replace করুন"
+                              : "📎 ক্লিক করে image select করুন"}
+                          </p>
+                          <input
+                            ref={editFileRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={handleEditSketchChange}
+                          />
+                        </div>
+                      </div>
+                    </LField>
+
                     <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
                       <p className="text-xs text-slate-400 uppercase tracking-widest mb-1 font-semibold">নতুন Target Preview</p>
                       <p className="text-[10px] text-slate-500 mb-2 font-mono">({editTargets.manpower} × {editForm.workingHours}h × 60 / {editForm.smv||"SMV"}) × {editForm.planEfficiency||0}%</p>
@@ -1415,9 +1483,9 @@ export default function LineLayoutPage() {
                         ))}
                       </div>
                     </div>
-                    <button type="submit" disabled={editSaving}
+                    <button type="submit" disabled={editSaving || editUploading}
                       className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-3 rounded-xl text-base uppercase tracking-widest transition-all">
-                      {editSaving ? "আপডেট হচ্ছে..." : "✓ Header আপডেট করুন"}
+                      {editUploading ? "Image আপলোড হচ্ছে..." : editSaving ? "আপডেট হচ্ছে..." : "✓ Header আপডেট করুন"}
                     </button>
                   </form>
                 </div>
@@ -1433,7 +1501,6 @@ export default function LineLayoutPage() {
                       {SERIAL_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
                   </LField>
-                  {/* Searchable Process Name + Add button */}
                   <LField label="Process Name">
                     <div className="flex gap-2">
                       <div className="flex-1">
@@ -1444,7 +1511,6 @@ export default function LineLayoutPage() {
                         className="px-3 py-3 bg-blue-50 border border-blue-300 hover:bg-blue-100 text-blue-600 rounded-lg text-base font-bold transition-all shrink-0">+</button>
                     </div>
                   </LField>
-                  {/* Searchable Machine Type */}
                   <LField label="Machine Type">
                     <SearchableSelect value={pForm.machineType} onChange={(v) => setPForm((p) => ({...p,machineType:v}))}
                       options={MACHINE_TYPES} placeholder="— Machine Type —" />
@@ -1500,7 +1566,6 @@ export default function LineLayoutPage() {
                                 <div className="text-xs font-semibold mb-1" style={{ color: c.accent }}>
                                   {p.machineType} · {p.machines?.map((m) => m.fromFloor).join(", ") || "No machine"}
                                 </div>
-                                {/* Serial numbers */}
                                 {serials.length > 0 && (
                                   <div className="flex flex-wrap gap-1 mt-1">
                                     {serials.map((sn) => (
@@ -1564,6 +1629,7 @@ export default function LineLayoutPage() {
                 </div>
               </div>
               <div className="flex-1 min-h-0">
+                {/* FIX: pass currentLayout directly as layoutInfo so grid always shows latest data */}
                 <LayoutGrid
                   processes={currentLayout.processes || []}
                   sketchUrl={currentLayout.sketchUrl}
