@@ -12,20 +12,7 @@ const BUYER_OPTIONS   = ["Decathlon - knit","Decathlon - woven","Walmart","Colum
 const HOURS_OPTIONS   = Array.from({ length: 14 }, (_, i) => i + 1);
 const SERIAL_OPTIONS  = Array.from({ length: 60 }, (_, i) => i + 1);
 
-const PROCESS_NAMES = [
-  "BONE POCKET MAKE BY PROFILE","POCKET POINT CUT",
-  "POCKET TOP STITCH & 'L' TACK (2) (ONE SIDE)","DART SEWING (2)",
-  "FACING ATTACH AT BACK & BACK YOKE HEM","MARKING AT HOOD",
-  "LABEL MAKE","LABEL TACK","LOOP MAKE & LOOP ATTACH",
-  "VELCRO ATTACH AT BONE & MARKING AT BACK YOKE",
-  "YOKE ATTACH AT FRONT (2) & SHOULDER JOIN","SLEEVE ATTACH",
-  "MARKING AT HOOD & HOOD 3 PART JOIN WITH ELASTIC","HOOD STITCH",
-  "SIDE SEAM SEWING","RAWEDGE CUT",
-  "SEAM SEALING AT SIDE SEAM,ARMHOLE & POCKET (ONE SIDE)",
-  "SEAM SEALING AT HOOD,COLLAR,SHOULDER & BACK YOKE",
-  "ZIPPER TACK,ZIPPER GARD MAKE & ZIPPER ATTACH AT GARD",
-  "BODY TURN","THREAD CUT","IRONING","QC CHECK","TRIMMING","PACKING",
-];
+// Process names are now loaded from /api/process-names (DB-driven)
 
 const MACHINE_TYPES = [
   "SINGLE NDL (PLAIN M/C)","SINGLE NDL (TOP FEED) M/C","SINGLE NDL (NDL FEED) M/C",
@@ -54,13 +41,95 @@ const MACHINE_COLORS = {
 
 function mc(type) { return MACHINE_COLORS[type] || MACHINE_COLORS["default"]; }
 
-function calcTargets(smv, eff, operator, hours) {
+// FIXED Formula: (manpower × hours × 60 / smv) × (eff/100)
+// Example: 47 op × 10h × 60min / 50.47smv × 0.70eff = 391 daily, 39 per hour
+function calcTargets(smv, eff, operator, helper, seamSealing, hours) {
+  const manpower = (parseInt(operator)||0) + (parseInt(helper)||0) + (parseInt(seamSealing)||0);
   const e = (parseFloat(eff) || 0) / 100;
   const s = parseFloat(smv) || 0;
-  const o = parseInt(operator) || 0;
   const h = parseInt(hours) || 8;
-  const oneHour = s > 0 ? Math.round((60 / s) * e * o) : 0;
-  return { oneHourTarget: oneHour, dailyTarget: Math.max(0, oneHour * h - 2) };
+  if (s === 0 || manpower === 0) return { manpower, oneHourTarget: 0, dailyTarget: 0 };
+  const dailyTarget   = Math.round((manpower * h * 60 / s) * e);
+  const oneHourTarget = Math.round(dailyTarget / h);
+  return { manpower, oneHourTarget, dailyTarget };
+}
+
+// SearchableSelect — dropdown with live filter search
+function SearchableSelect({ value, onChange, options, placeholder = "— Select —", className = "" }) {
+  const [open,  setOpen]  = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    function h(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const filtered = options.filter((o) => o.toLowerCase().includes(query.toLowerCase()));
+  return (
+    <div ref={ref} className={"relative " + className}>
+      <button type="button" onClick={() => { setOpen((o) => !o); setQuery(""); }}
+        className="w-full bg-white border border-slate-300 text-slate-800 rounded-lg px-3 py-3 text-base text-left flex items-center justify-between focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-colors">
+        <span className={value ? "text-slate-800" : "text-slate-400"}>{value || placeholder}</span>
+        <span className="text-slate-400 text-sm ml-2">{open ? "▴" : "▾"}</span>
+      </button>
+      {open && (
+        <div className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded-xl shadow-2xl overflow-hidden">
+          <div className="p-2 border-b border-slate-200">
+            <input autoFocus type="text" value={query} onChange={(e) => setQuery(e.target.value)}
+              placeholder="খুঁজুন..." className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 placeholder:text-slate-400" />
+          </div>
+          <div className="max-h-56 overflow-y-auto">
+            {filtered.length === 0 ? <p className="text-center text-slate-400 text-sm py-6">কোনো ফলাফল নেই</p> : filtered.map((o) => (
+              <button key={o} type="button" onClick={() => { onChange(o); setOpen(false); setQuery(""); }}
+                className={"w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 transition-colors " + (value === o ? "bg-blue-50 text-blue-700 font-semibold" : "text-slate-700")}>
+                {o}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// AddProcessNameModal
+function AddProcessNameModal({ onAdd, onClose }) {
+  const [name, setName] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [error, setError] = React.useState("");
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!name.trim()) { setError("নাম লিখুন।"); return; }
+    setSaving(true);
+    try {
+      const res  = await fetch("/api/process-names", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ name: name.trim() }) });
+      const json = await res.json();
+      if (json.success) { onAdd(json.data.name); onClose(); }
+      else setError(json.message);
+    } finally { setSaving(false); }
+  }
+  return (
+    <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
+      <div className="bg-white border border-slate-300 rounded-2xl w-full max-w-md shadow-2xl">
+        <div className="h-1 bg-gradient-to-r from-blue-500 to-violet-500 rounded-t-2xl" />
+        <div className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-bold text-slate-800 text-lg">নতুন Process Name যোগ করুন</h3>
+            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
+          </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <input autoFocus type="text" value={name} onChange={(e) => { setName(e.target.value); setError(""); }}
+              placeholder="Process name লিখুন..." className="w-full bg-white border border-slate-300 text-slate-800 rounded-lg px-4 py-3 text-base focus:outline-none focus:border-blue-500 placeholder:text-slate-400" />
+            {error && <p className="text-red-600 text-sm">{error}</p>}
+            <div className="flex gap-3">
+              <button type="submit" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all">{saving ? "যোগ হচ্ছে..." : "+ যোগ করুন"}</button>
+              <button type="button" onClick={onClose} className="px-5 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">বাতিল</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -753,6 +822,7 @@ export default function LineLayoutPage() {
     operator:"", helper:"", seamSealing:"", workingHours:8,
   });
 
+  const editTargets = { ...calcTargets(editForm.smv, editForm.planEfficiency, editForm.operator, editForm.helper, editForm.seamSealing, editForm.workingHours) };
   const [editingProcess, setEditingProcess] = useState(null);
   const [procEditSaving, setProcEditSaving] = useState(false);
   const [showEditPicker, setShowEditPicker] = useState(false);
@@ -760,8 +830,13 @@ export default function LineLayoutPage() {
   const [toast, setToast] = useState(null);
   function showToast(type, msg) { setToast({ type, msg }); setTimeout(() => setToast(null), 3000); }
 
-  const manpower = (parseInt(form.operator)||0)+(parseInt(form.helper)||0)+(parseInt(form.seamSealing)||0);
-  const { oneHourTarget, dailyTarget } = calcTargets(form.smv, form.planEfficiency, form.operator, form.workingHours);
+  // FIXED: pass helper + seamSealing to calcTargets so manpower = op+helper+ss
+  const { manpower, oneHourTarget, dailyTarget } = calcTargets(
+    form.smv, form.planEfficiency, form.operator, form.helper, form.seamSealing, form.workingHours
+  );
+  const [processNames,  setProcessNames]  = React.useState([]);
+  const [loadingPNames, setLoadingPNames] = React.useState(false);
+  const [showAddPName,  setShowAddPName]  = React.useState(false);
 
   const loadLayouts = useCallback(async () => {
     setListLoading(true);
@@ -777,6 +852,19 @@ export default function LineLayoutPage() {
   }, [filterFloor, filterLine, effectiveFactory]);
 
   useEffect(() => { if (view === "list") loadLayouts(); }, [view, filterFloor, filterLine, effectiveFactory]);
+
+  // Load process names from DB
+  useEffect(() => {
+    async function load() {
+      setLoadingPNames(true);
+      try {
+        const res  = await fetch("/api/process-names");
+        const json = await res.json();
+        if (json.success) setProcessNames(json.data.map((d) => d.name));
+      } finally { setLoadingPNames(false); }
+    }
+    load();
+  }, []);
 
   function prefillEditForm(l) {
     setEditForm({
@@ -959,6 +1047,13 @@ export default function LineLayoutPage() {
 
         <Toast toast={toast} />
 
+        {showAddPName && (
+          <AddProcessNameModal
+            onAdd={(name) => setProcessNames((prev) => [...prev, name].sort())}
+            onClose={() => setShowAddPName(false)}
+          />
+        )}
+
         {showPicker && (
           <MachineFloorPicker
             machineType={pForm.machineType}
@@ -996,20 +1091,12 @@ export default function LineLayoutPage() {
                   </select>
                 </LField>
                 <LField label="Process Name">
-                  <select value={editingProcess.processName}
-                    onChange={(e) => setEditingProcess((p) => ({ ...p, processName: e.target.value }))}
-                    className="w-full bg-white border border-slate-300 text-slate-700 rounded-lg px-3 py-3 text-base focus:outline-none focus:border-amber-500">
-                    <option value="">— Process select করুন —</option>
-                    {PROCESS_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
-                  </select>
+                  <SearchableSelect value={editingProcess.processName} onChange={(v) => setEditingProcess((p) => ({ ...p, processName: v }))}
+                    options={processNames} placeholder="— Process select করুন —" />
                 </LField>
                 <LField label="Machine Type">
-                  <select value={editingProcess.machineType}
-                    onChange={(e) => setEditingProcess((p) => ({ ...p, machineType: e.target.value }))}
-                    className="w-full bg-white border border-slate-300 text-slate-700 rounded-lg px-3 py-3 text-base focus:outline-none focus:border-amber-500">
-                    <option value="">— Machine Type —</option>
-                    {MACHINE_TYPES.map((m) => <option key={m} value={m}>{m}</option>)}
-                  </select>
+                  <SearchableSelect value={editingProcess.machineType} onChange={(v) => setEditingProcess((p) => ({ ...p, machineType: v }))}
+                    options={MACHINE_TYPES} placeholder="— Machine Type —" />
                 </LField>
                 {editingProcess.machineType && (() => {
                   const c = mc(editingProcess.machineType);
@@ -1202,13 +1289,20 @@ export default function LineLayoutPage() {
                       <LField key={key} label={label}><LInput type="number" value={form[key]} onChange={(v) => setForm((p) => ({...p,[key]:v}))} placeholder="0" /></LField>
                     ))}
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <LField label="1 Hour Target (auto)">
-                      <div className="w-full bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg px-3 py-3 text-xl font-black">{oneHourTarget}</div>
-                    </LField>
-                    <LField label={`Total Daily Target (${form.workingHours}h, auto)`}>
-                      <div className="w-full bg-violet-50 border border-violet-300 text-violet-700 rounded-lg px-3 py-3 text-xl font-black">{dailyTarget}</div>
-                    </LField>
+                  {/* FIXED target display with formula shown */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-1 font-semibold">Target Preview</p>
+                    <p className="text-xs text-slate-500 mb-3 font-mono">({manpower} × {form.workingHours}h × 60 / {form.smv || "SMV"}) × {form.planEfficiency || 0}%</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-violet-50 border border-violet-300 text-violet-700 rounded-lg px-3 py-3">
+                        <div className="text-xs font-bold uppercase tracking-widest opacity-60 mb-1">Daily Target ({form.workingHours}h)</div>
+                        <div className="text-2xl font-black">{dailyTarget}</div>
+                      </div>
+                      <div className="bg-emerald-50 border border-emerald-300 text-emerald-700 rounded-lg px-3 py-3">
+                        <div className="text-xs font-bold uppercase tracking-widest opacity-60 mb-1">1 Hour Target</div>
+                        <div className="text-2xl font-black">{oneHourTarget}</div>
+                      </div>
+                    </div>
                   </div>
                   <LField label="Line Sketch / Image (optional)">
                     <div onClick={() => fileRef.current?.click()}
@@ -1274,9 +1368,10 @@ export default function LineLayoutPage() {
                   <form onSubmit={async (e) => {
                     e.preventDefault(); setEditSaving(true);
                     try {
+                      const { manpower: mp, oneHourTarget: oht, dailyTarget: dt } = calcTargets(editForm.smv, editForm.planEfficiency, editForm.operator, editForm.helper, editForm.seamSealing, editForm.workingHours);
                       const res  = await fetch(`/api/line-layouts/${currentLayout._id}`, {
                         method:"PATCH", headers:{"Content-Type":"application/json"},
-                        body: JSON.stringify({ action:"update_header", ...editForm }),
+                        body: JSON.stringify({ action:"update_header", ...editForm, manpower: mp, oneHourTarget: oht, dailyTarget: dt }),
                       });
                       const json = await res.json();
                       if (json.success) { setCurrentLayout(json.data); showToast("success","Header আপডেট হয়েছে!"); }
@@ -1304,27 +1399,22 @@ export default function LineLayoutPage() {
                         {HOURS_OPTIONS.map((h) => <option key={h} value={h}>{h} ঘণ্টা</option>)}
                       </select>
                     </LField>
-                    {(() => {
-                      const { oneHourTarget: oht, dailyTarget: dt } = calcTargets(editForm.smv, editForm.planEfficiency, editForm.operator, editForm.workingHours);
-                      const mp = (parseInt(editForm.operator)||0)+(parseInt(editForm.helper)||0)+(parseInt(editForm.seamSealing)||0);
-                      return (
-                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                          <p className="text-xs text-slate-400 uppercase tracking-widest mb-2 font-semibold">নতুন Target Preview</p>
-                          <div className="grid grid-cols-3 gap-2 text-center">
-                            {[
-                              { l:"Manpower",   v:mp,  c:"text-blue-700"    },
-                              { l:"1Hr Target", v:oht, c:"text-emerald-700" },
-                              { l:`Daily(${editForm.workingHours}h)`, v:dt, c:"text-violet-700" },
-                            ].map(({ l,v,c }) => (
-                              <div key={l} className="bg-white border border-slate-200 rounded-lg px-2 py-2">
-                                <div className="text-xs text-slate-400">{l}</div>
-                                <div className={`text-lg font-black ${c}`}>{v}</div>
-                              </div>
-                            ))}
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                      <p className="text-xs text-slate-400 uppercase tracking-widest mb-1 font-semibold">নতুন Target Preview</p>
+                      <p className="text-[10px] text-slate-500 mb-2 font-mono">({editTargets.manpower} × {editForm.workingHours}h × 60 / {editForm.smv||"SMV"}) × {editForm.planEfficiency||0}%</p>
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        {[
+                          { l:"Manpower",   v: editTargets.manpower,      c:"text-blue-700"    },
+                          { l:"1Hr Target", v: editTargets.oneHourTarget,  c:"text-emerald-700" },
+                          { l:`Daily(${editForm.workingHours}h)`, v: editTargets.dailyTarget, c:"text-violet-700" },
+                        ].map(({ l,v,c }) => (
+                          <div key={l} className="bg-white border border-slate-200 rounded-lg px-2 py-2">
+                            <div className="text-xs text-slate-400">{l}</div>
+                            <div className={`text-lg font-black ${c}`}>{v}</div>
                           </div>
-                        </div>
-                      );
-                    })()}
+                        ))}
+                      </div>
+                    </div>
                     <button type="submit" disabled={editSaving}
                       className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-3 rounded-xl text-base uppercase tracking-widest transition-all">
                       {editSaving ? "আপডেট হচ্ছে..." : "✓ Header আপডেট করুন"}
@@ -1343,19 +1433,21 @@ export default function LineLayoutPage() {
                       {SERIAL_OPTIONS.map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
                   </LField>
+                  {/* Searchable Process Name + Add button */}
                   <LField label="Process Name">
-                    <select value={pForm.processName} onChange={(e) => setPForm((p) => ({...p,processName:e.target.value}))}
-                      className="w-full bg-white border border-slate-300 text-slate-700 rounded-lg px-3 py-3 text-base focus:outline-none focus:border-blue-500">
-                      <option value="">— Process select করুন —</option>
-                      {PROCESS_NAMES.map((n) => <option key={n} value={n}>{n}</option>)}
-                    </select>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <SearchableSelect value={pForm.processName} onChange={(v) => setPForm((p) => ({...p,processName:v}))}
+                          options={loadingPNames ? [] : processNames} placeholder={loadingPNames ? "লোড হচ্ছে..." : "— Process select করুন —"} />
+                      </div>
+                      <button type="button" onClick={() => setShowAddPName(true)} title="নতুন process name যোগ করুন"
+                        className="px-3 py-3 bg-blue-50 border border-blue-300 hover:bg-blue-100 text-blue-600 rounded-lg text-base font-bold transition-all shrink-0">+</button>
+                    </div>
                   </LField>
+                  {/* Searchable Machine Type */}
                   <LField label="Machine Type">
-                    <select value={pForm.machineType} onChange={(e) => setPForm((p) => ({...p,machineType:e.target.value}))}
-                      className="w-full bg-white border border-slate-300 text-slate-700 rounded-lg px-3 py-3 text-base focus:outline-none focus:border-blue-500">
-                      <option value="">— Machine Type —</option>
-                      {MACHINE_TYPES.map((m) => <option key={m} value={m}>{m}</option>)}
-                    </select>
+                    <SearchableSelect value={pForm.machineType} onChange={(v) => setPForm((p) => ({...p,machineType:v}))}
+                      options={MACHINE_TYPES} placeholder="— Machine Type —" />
                   </LField>
                   {pForm.machineType && (() => {
                     const c = mc(pForm.machineType);
