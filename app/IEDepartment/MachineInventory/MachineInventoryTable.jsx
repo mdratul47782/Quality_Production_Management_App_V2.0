@@ -49,7 +49,6 @@ function flattenMachine(doc, slNo) {
   return row;
 }
 
-// ── Clickable cell components ─────────────────────────────────────────────────
 function RunCell({ v, onClick }) {
   return (
     <td
@@ -74,15 +73,17 @@ function IdleCell({ v, onClick }) {
   );
 }
 
-// ── Floor Cell Drawer — shows all units in a floor/status, allows edit ────────
+// ── Floor Cell Drawer ─────────────────────────────────────────────────────────
+// floorName can be null for Repairable/Damage (status-only filter)
 function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onSaved }) {
-  const [units,       setUnits]       = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [selected,    setSelected]    = useState(null); // unit being edited
-  const [editFloor,   setEditFloor]   = useState("");
-  const [editStatus,  setEditStatus]  = useState("");
-  const [saving,      setSaving]      = useState(false);
-  const [toast,       setToast]       = useState(null);
+  const [units,      setUnits]      = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [selected,   setSelected]   = useState(null);
+  const [editFloor,  setEditFloor]  = useState("");
+  const [editStatus, setEditStatus] = useState("");
+  const [saving,     setSaving]     = useState(false);
+  const [deleting,   setDeleting]   = useState(false);
+  const [toast,      setToast]      = useState(null);
 
   const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3000); };
 
@@ -94,9 +95,11 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
       const res  = await fetch(`/api/machines?${qs}`);
       const json = await res.json();
       if (json.success && json.data) {
-        const filtered = (json.data.units ?? []).filter(
-          (u) => u.floorName === floorName && u.status === status
-        );
+        const allUnits = json.data.units ?? [];
+        // KEY FIX: if floorName is null (Repairable/Damage), filter by status only
+        const filtered = floorName
+          ? allUnits.filter((u) => u.floorName === floorName && u.status === status)
+          : allUnits.filter((u) => u.status === status);
         setUnits(filtered);
       }
     } finally { setLoading(false); }
@@ -135,13 +138,32 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
     } finally { setSaving(false); }
   };
 
-  const st = STATUS_STYLE[status] || STATUS_STYLE.Running;
+  const handleDelete = async () => {
+    if (!selected) return;
+    if (!confirm(`"${selected.serialNumber}" মুছে ফেলবেন?`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch("/api/machines", {
+        method:  "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ factory, machineName, serialNumber: selected.serialNumber }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        showToast("success", "মুছে ফেলা হয়েছে।");
+        setSelected(null);
+        await load();
+        if (onSaved) onSaved();
+      } else showToast("error", json.message);
+    } finally { setDeleting(false); }
+  };
+
+  const st     = STATUS_STYLE[status]     || STATUS_STYLE.Running;
   const editSt = STATUS_STYLE[editStatus] || STATUS_STYLE.Running;
   const changed = selected && (editFloor !== selected.floorName || editStatus !== selected.status);
 
   return (
     <>
-      {/* Toast */}
       {toast && (
         <div className={`fixed top-5 right-5 z-[999] px-5 py-3 rounded-lg text-sm font-semibold shadow-2xl border
           ${toast.type === "success" ? "bg-emerald-950 border-emerald-500 text-emerald-300" : "bg-red-950 border-red-500 text-red-300"}`}>
@@ -153,15 +175,26 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
       <div className="fixed inset-0 bg-black/60 z-40" onClick={onClose} />
 
       {/* Panel */}
-      <div className="fixed right-0 top-0 h-full w-[420px] bg-[#0f1117] border-l border-slate-800 z-50 flex flex-col shadow-2xl font-mono">
+      <div className="fixed right-0 top-0 h-full w-[440px] bg-[#0f1117] border-l border-slate-800 z-50 flex flex-col shadow-2xl font-mono">
+
         {/* Header */}
-        <div className={`border-b border-slate-800 px-5 py-4 ${st.badge} bg-opacity-30`}>
+        <div className={`border-b border-slate-800 px-5 py-4`} style={{ background: "rgba(15,17,23,0.95)" }}>
           <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               <div className={`w-2.5 h-2.5 rounded-full ${st.dot}`} />
-              <span className="text-xs font-bold uppercase tracking-widest">{status}</span>
-              <span className="text-slate-500 text-xs">·</span>
-              <span className="text-xs font-bold">Floor {floorName}</span>
+              <span className={`text-xs font-bold uppercase tracking-widest ${st.cell}`}>{status}</span>
+              {floorName && (
+                <>
+                  <span className="text-slate-500 text-xs">·</span>
+                  <span className="text-xs font-bold text-white">Floor {floorName}</span>
+                </>
+              )}
+              {!floorName && (
+                <>
+                  <span className="text-slate-500 text-xs">·</span>
+                  <span className="text-xs text-slate-400">সব Floor</span>
+                </>
+              )}
             </div>
             <button onClick={onClose}
               className="text-slate-500 hover:text-slate-300 text-lg font-bold w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-800 transition-all">
@@ -169,10 +202,15 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
             </button>
           </div>
           <p className="text-white font-bold text-sm truncate">{machineName}</p>
-          {!loading && <p className="text-xs text-slate-400 mt-0.5">{units.length}টি unit</p>}
+          {!loading && (
+            <p className="text-xs text-slate-400 mt-0.5">
+              {units.length}টি unit
+              {!floorName && <span className="ml-1 text-slate-500">(সব floor মিলিয়ে)</span>}
+            </p>
+          )}
         </div>
 
-        {/* Unit list */}
+        {/* Unit list — grouped by floor when floorName is null */}
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <p className="text-slate-600 text-xs animate-pulse text-center py-10">লোড হচ্ছে...</p>
@@ -180,38 +218,95 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
             <p className="text-slate-600 text-xs text-center py-10">কোনো unit নেই।</p>
           ) : (
             <div className="space-y-1.5">
-              <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-3">Serial select করুন → edit করুন</p>
-              {units
-                .slice()
-                .sort((a, b) => a.serialNumber.localeCompare(b.serialNumber))
-                .map((u) => {
-                  const isSel = selected?.serialNumber === u.serialNumber;
-                  return (
-                    <button
-                      key={u.serialNumber}
-                      type="button"
-                      onClick={() => isSel ? setSelected(null) : selectUnit(u)}
-                      className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border text-left transition-all
-                        ${isSel
-                          ? "bg-cyan-900/40 border-cyan-500 text-cyan-200"
-                          : `${st.chip} hover:brightness-125`}`}
-                    >
-                      <div className={`w-2 h-2 rounded-full shrink-0 ${st.dot}`} />
-                      <span className="font-bold font-mono text-sm flex-1">{u.serialNumber}</span>
-                      {isSel && <span className="text-xs text-cyan-400">✎ edit</span>}
-                    </button>
-                  );
-                })}
+              <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-3 font-mono">
+                Serial select করুন → edit করুন
+              </p>
+
+              {/* When no floorName (Repairable/Damage): group by floor */}
+              {!floorName ? (
+                (() => {
+                  // group units by floorName
+                  const grouped = units.reduce((acc, u) => {
+                    const key = u.floorName || "Others";
+                    if (!acc[key]) acc[key] = [];
+                    acc[key].push(u);
+                    return acc;
+                  }, {});
+                  return Object.entries(grouped).map(([floor, floorUnits]) => (
+                    <div key={floor} className="mb-4">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 px-1">
+                        Floor: <span className="text-slate-300">{floor}</span>
+                        <span className="ml-2 text-slate-600 font-normal">({floorUnits.length})</span>
+                      </p>
+                      <div className="space-y-1">
+                        {floorUnits
+                          .slice()
+                          .sort((a, b) => a.serialNumber.localeCompare(b.serialNumber))
+                          .map((u) => {
+                            const isSel = selected?.serialNumber === u.serialNumber;
+                            return (
+                              <button
+                                key={u.serialNumber}
+                                type="button"
+                                onClick={() => isSel ? setSelected(null) : selectUnit(u)}
+                                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border text-left transition-all
+                                  ${isSel
+                                    ? "bg-cyan-900/40 border-cyan-500 text-cyan-200"
+                                    : `${st.chip} hover:brightness-125`}`}
+                              >
+                                <div className={`w-2 h-2 rounded-full shrink-0 ${st.dot}`} />
+                                <span className="font-bold font-mono text-sm flex-1">{u.serialNumber}</span>
+                                <span className="text-[10px] text-slate-500 font-normal">{u.floorName}</span>
+                                {isSel && <span className="text-xs text-cyan-400">✎</span>}
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  ));
+                })()
+              ) : (
+                // Normal floor-specific list
+                units
+                  .slice()
+                  .sort((a, b) => a.serialNumber.localeCompare(b.serialNumber))
+                  .map((u) => {
+                    const isSel = selected?.serialNumber === u.serialNumber;
+                    return (
+                      <button
+                        key={u.serialNumber}
+                        type="button"
+                        onClick={() => isSel ? setSelected(null) : selectUnit(u)}
+                        className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border text-left transition-all
+                          ${isSel
+                            ? "bg-cyan-900/40 border-cyan-500 text-cyan-200"
+                            : `${st.chip} hover:brightness-125`}`}
+                      >
+                        <div className={`w-2 h-2 rounded-full shrink-0 ${st.dot}`} />
+                        <span className="font-bold font-mono text-sm flex-1">{u.serialNumber}</span>
+                        {isSel && <span className="text-xs text-cyan-400">✎ edit</span>}
+                      </button>
+                    );
+                  })
+              )}
             </div>
           )}
         </div>
 
-        {/* Edit panel — appears when a unit is selected */}
+        {/* Edit panel */}
         {selected && (
           <div className="border-t border-slate-800 bg-[#161b27] p-4 space-y-3 shrink-0">
             <p className="text-[10px] text-amber-400 uppercase tracking-widest font-bold">
               ✎ {selected.serialNumber} — পরিবর্তন করুন
             </p>
+
+            {/* Current info */}
+            <div className="flex items-center gap-3 bg-[#0f1117] border border-slate-800 rounded-lg px-3 py-2 text-xs">
+              <span className="text-slate-500">বর্তমান:</span>
+              <span className="text-white font-bold">{selected.floorName}</span>
+              <span className="text-slate-600">·</span>
+              <span className={`font-bold ${STATUS_STYLE[selected.status]?.cell || "text-slate-300"}`}>{selected.status}</span>
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               {/* Floor select */}
@@ -245,7 +340,7 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
               </div>
             </div>
 
-            {/* Change arrow preview */}
+            {/* Change preview */}
             {changed && (
               <div className={`rounded-lg px-3 py-2 text-xs border ${editSt.badge}`}>
                 <span className="opacity-60">{selected.floorName} · {selected.status}</span>
@@ -265,8 +360,16 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
               </button>
               <button
                 type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-3 border border-red-800 hover:border-red-500 text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded-xl text-xs transition-all disabled:opacity-40"
+              >
+                {deleting ? "..." : "মুছুন"}
+              </button>
+              <button
+                type="button"
                 onClick={() => setSelected(null)}
-                className="px-4 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 rounded-xl text-xs transition-all"
+                className="px-3 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 rounded-xl text-xs transition-all"
               >
                 বাতিল
               </button>
@@ -278,7 +381,7 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
   );
 }
 
-// ── Sub-component: expanded row showing ALL serials ───────────────────────────
+// ── Unit Detail Panel ─────────────────────────────────────────────────────────
 function UnitDetailPanel({ machineName, factory, refreshKey }) {
   const [units,   setUnits]   = useState([]);
   const [loading, setLoading] = useState(true);
@@ -304,14 +407,14 @@ function UnitDetailPanel({ machineName, factory, refreshKey }) {
   return (
     <div>
       <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-3 font-mono">
-        {machineName} — {units.length}টি unit (Floor cell এ click করুন → edit করুন)
+        {machineName} — {units.length}টি unit
       </p>
       <div className="flex flex-wrap gap-2">
         {units
           .slice()
           .sort((a, b) => a.serialNumber.localeCompare(b.serialNumber))
           .map((u) => {
-            const st = STATUS_STYLE[u.status] || { chip: "bg-slate-800 border-slate-700 text-slate-300" };
+            const st = STATUS_STYLE[u.status] || { chip: "bg-slate-800 border-slate-700 text-slate-300", dot: "bg-slate-500" };
             return (
               <div key={u.serialNumber}
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-mono ${st.chip}`}>
@@ -331,17 +434,14 @@ function UnitDetailPanel({ machineName, factory, refreshKey }) {
 
 // ── Main Table ────────────────────────────────────────────────────────────────
 export default function MachineInventoryTable({ refreshKey, factory = "" }) {
-  const [rows,    setRows]    = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [search,  setSearch]  = useState("");
-  const [sortCol, setSortCol] = useState("slNo");
-  const [sortDir, setSortDir] = useState("asc");
+  const [rows,     setRows]     = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [search,   setSearch]   = useState("");
+  const [sortCol,  setSortCol]  = useState("slNo");
+  const [sortDir,  setSortDir]  = useState("asc");
   const [expanded, setExpanded] = useState(null);
-
-  // Drawer state: { machineName, floorName, status }
-  const [drawer, setDrawer] = useState(null);
-  // Local refreshKey for drawer reloads
-  const [drawerKey, setDrawerKey] = useState(0);
+  const [drawer,   setDrawer]   = useState(null);
+  const [drawerKey,setDrawerKey]= useState(0);
 
   const loadTable = useCallback(async () => {
     setLoading(true);
@@ -379,6 +479,7 @@ export default function MachineInventoryTable({ refreshKey, factory = "" }) {
   const totalRepairable = rows.reduce((s, r) => s + r.repairable, 0);
   const totalDamage     = rows.reduce((s, r) => s + r.damage, 0);
 
+  // floorName=null means "all floors, filter by status only" → used for Repairable/Damage
   const openDrawer = (machineName, floorName, status) => {
     setDrawer({ machineName, floorName, status });
     setDrawerKey((k) => k + 1);
@@ -387,12 +488,11 @@ export default function MachineInventoryTable({ refreshKey, factory = "" }) {
   return (
     <div className="flex flex-col h-full bg-[#0f1117] relative">
 
-      {/* Floor Cell Drawer */}
       {drawer && (
         <FloorCellDrawer
           key={drawerKey}
           machineName={drawer.machineName}
-          floorName={drawer.floorName}
+          floorName={drawer.floorName}   /* null for Repairable/Damage */
           status={drawer.status}
           factory={factory}
           onClose={() => setDrawer(null)}
@@ -445,7 +545,7 @@ export default function MachineInventoryTable({ refreshKey, factory = "" }) {
                 <th rowSpan={2} onClick={() => handleSort("machineName")} className="border-r border-slate-700 px-2 py-2 text-left text-slate-400 font-semibold cursor-pointer whitespace-nowrap">
                   Machine Name <SortIcon col="machineName" />
                 </th>
-                <th rowSpan={2} onClick={() => handleSort("stockQty")} className="border-r border-slate-700 px-2 py-2 text-slate-400 font-semibold cursor-pointer whitespace-nowrap" title="Total registered units">
+                <th rowSpan={2} onClick={() => handleSort("stockQty")} className="border-r border-slate-700 px-2 py-2 text-slate-400 font-semibold cursor-pointer whitespace-nowrap">
                   Units <SortIcon col="stockQty" />
                 </th>
                 {FLOOR_COLS.map(({ floor }) => (
@@ -469,35 +569,26 @@ export default function MachineInventoryTable({ refreshKey, factory = "" }) {
             <tbody>
               {filtered.map((row, idx) => (
                 <React.Fragment key={row._id}>
-                  <tr
-                    className={`border-b border-slate-800 transition-colors
-                      ${expanded === row.machineName ? "bg-slate-800/50" : idx % 2 === 0 ? "bg-[#0f1117]" : "bg-[#131720]"}`}
-                  >
+                  <tr className={`border-b border-slate-800 transition-colors
+                    ${expanded === row.machineName ? "bg-slate-800/50" : idx % 2 === 0 ? "bg-[#0f1117]" : "bg-[#131720]"}`}>
                     <td className="text-center border-r border-slate-700/50 px-2 py-1.5 text-slate-500">{row.slNo}</td>
                     <td
                       className="border-r border-slate-700/50 px-2 py-1.5 text-slate-200 whitespace-nowrap font-medium cursor-pointer hover:text-cyan-300 transition-colors"
                       onClick={() => setExpanded(expanded === row.machineName ? null : row.machineName)}
                     >
-                      <span className="mr-1 text-slate-600 text-[10px]">
-                        {expanded === row.machineName ? "▾" : "▸"}
-                      </span>
+                      <span className="mr-1 text-slate-600 text-[10px]">{expanded === row.machineName ? "▾" : "▸"}</span>
                       {row.machineName}
                     </td>
                     <td className="text-center border-r border-slate-700/50 px-2 py-1.5 text-white font-bold">{row.stockQty}</td>
 
                     {FLOOR_COLS.map(({ floor, dbKey, runKey, idleKey }) => (
                       <React.Fragment key={floor}>
-                        <RunCell
-                          v={row[runKey]}
-                          onClick={() => openDrawer(row.machineName, dbKey, "Running")}
-                        />
-                        <IdleCell
-                          v={row[idleKey]}
-                          onClick={() => openDrawer(row.machineName, dbKey, "Idle")}
-                        />
+                        <RunCell  v={row[runKey]}  onClick={() => openDrawer(row.machineName, dbKey, "Running")} />
+                        <IdleCell v={row[idleKey]} onClick={() => openDrawer(row.machineName, dbKey, "Idle")}    />
                       </React.Fragment>
                     ))}
 
+                    {/* Repairable — floorName=null so drawer shows all floors */}
                     <td
                       className={`text-center border-r border-slate-700/50 px-2 py-1.5 font-medium transition-colors
                         ${row.repairable ? "text-orange-400 cursor-pointer hover:bg-orange-950/30" : "text-slate-700 cursor-default"}`}
@@ -506,6 +597,8 @@ export default function MachineInventoryTable({ refreshKey, factory = "" }) {
                     >
                       {row.repairable || "—"}
                     </td>
+
+                    {/* Damage — floorName=null */}
                     <td
                       className={`text-center px-2 py-1.5 font-medium transition-colors
                         ${row.damage ? "text-red-400 cursor-pointer hover:bg-red-950/30" : "text-slate-700 cursor-default"}`}
@@ -516,7 +609,6 @@ export default function MachineInventoryTable({ refreshKey, factory = "" }) {
                     </td>
                   </tr>
 
-                  {/* Expanded all-units row */}
                   {expanded === row.machineName && (
                     <tr className="bg-[#0d1018] border-b-2 border-cyan-900/40">
                       <td colSpan={3 + FLOOR_COLS.length * 2 + 2} className="px-6 py-4">
