@@ -19,7 +19,7 @@ const roboto = Roboto({
 
 const poppins = Poppins({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700", "800", "900"], // ✅ includes 700
+  weight: ["300", "400", "500", "600", "700", "800", "900"],
   variable: "--font-poppins",
 });
 
@@ -32,7 +32,7 @@ export default async function RootLayout({ children }) {
   await dbConnect();
 
   return (
-    <html lang="en">
+    <html lang="en" style={{ "--sidebar-w": "56px" }}>
       <body
         className={`
           ${poppins.variable}
@@ -43,7 +43,15 @@ export default async function RootLayout({ children }) {
       >
         <AuthProvider>
           <SideNavbar />
-          <div className="min-h-screen pl-14">{children}</div>
+          <div
+            style={{
+              paddingLeft: "var(--sidebar-w)",
+              transition: "padding-left 280ms cubic-bezier(0.4,0,0.2,1)",
+              minHeight: "100vh",
+            }}
+          >
+            {children}
+          </div>
         </AuthProvider>
       </body>
     </html>
