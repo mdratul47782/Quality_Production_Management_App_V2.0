@@ -58,6 +58,13 @@ const STATUS_TEXT_COLOR = {
   Damage:     "text-red-400",
 };
 
+const STATUS_BADGE_MINI = {
+  Running:    "bg-emerald-950 border-emerald-800 text-emerald-300",
+  Idle:       "bg-amber-950 border-amber-800 text-amber-300",
+  Repairable: "bg-orange-950 border-orange-800 text-orange-300",
+  Damage:     "bg-red-950 border-red-800 text-red-300",
+};
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 function Toast({ toast }) {
   if (!toast) return null;
@@ -73,19 +80,15 @@ function Toast({ toast }) {
 }
 
 // ─── Serial Search Tab ────────────────────────────────────────────────────────
-// Search by serial number across ALL machine types for this factory.
-// Shows current machine/floor/status and allows editing in place.
 function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
-  const [query,       setQuery]       = useState("");
-  const [searching,   setSearching]   = useState(false);
-  const [result,      setResult]      = useState(null); // { machine, unit }
-  const [notFound,    setNotFound]    = useState(false);
-
-  // Edit state
-  const [editFloor,   setEditFloor]   = useState("");
-  const [editStatus,  setEditStatus]  = useState("Running");
-  const [saving,      setSaving]      = useState(false);
-  const [deleting,    setDeleting]    = useState(false);
+  const [query,      setQuery]      = useState("");
+  const [searching,  setSearching]  = useState(false);
+  const [result,     setResult]     = useState(null);
+  const [notFound,   setNotFound]   = useState(false);
+  const [editFloor,  setEditFloor]  = useState("");
+  const [editStatus, setEditStatus] = useState("Running");
+  const [saving,     setSaving]     = useState(false);
+  const [deleting,   setDeleting]   = useState(false);
 
   const handleSearch = useCallback(async () => {
     const sn = query.trim().toUpperCase();
@@ -94,61 +97,35 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
     setResult(null);
     setNotFound(false);
     try {
-      const qs  = factory ? `?factory=${encodeURIComponent(factory)}` : "";
+      const qs   = factory ? `?factory=${encodeURIComponent(factory)}` : "";
       const res  = await fetch(`/api/machines${qs}`);
       const json = await res.json();
       if (!json.success) { setNotFound(true); return; }
-
       let found = null;
       for (const machine of (json.data || [])) {
-        const unit = (machine.units || []).find(
-          (u) => u.serialNumber.toUpperCase() === sn
-        );
+        const unit = (machine.units || []).find((u) => u.serialNumber.toUpperCase() === sn);
         if (unit) { found = { machine, unit }; break; }
       }
-
-      if (found) {
-        setResult(found);
-        setEditFloor(found.unit.floorName);
-        setEditStatus(found.unit.status);
-        setNotFound(false);
-      } else {
-        setNotFound(true);
-      }
-    } finally {
-      setSearching(false);
-    }
+      if (found) { setResult(found); setEditFloor(found.unit.floorName); setEditStatus(found.unit.status); setNotFound(false); }
+      else        { setNotFound(true); }
+    } finally { setSearching(false); }
   }, [query, factory]);
 
   const handleSave = async () => {
     if (!result) return;
     setSaving(true);
     try {
-      const res = await fetch("/api/machines", {
-        method:  "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          factory,
-          machineName:  result.machine.machineName,
-          serialNumber: result.unit.serialNumber,
-          floorName:    editFloor,
-          status:       editStatus,
-        }),
+      const res  = await fetch("/api/machines", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ factory, machineName: result.machine.machineName, serialNumber: result.unit.serialNumber, floorName: editFloor, status: editStatus }),
       });
       const json = await res.json();
       if (json.success) {
         showToast("success", "আপডেট হয়েছে!");
-        setResult((prev) => ({
-          ...prev,
-          unit: { ...prev.unit, floorName: editFloor, status: editStatus },
-        }));
+        setResult((prev) => ({ ...prev, unit: { ...prev.unit, floorName: editFloor, status: editStatus } }));
         if (onSaveSuccess) onSaveSuccess();
-      } else {
-        showToast("error", json.message);
-      }
-    } finally {
-      setSaving(false);
-    }
+      } else showToast("error", json.message);
+    } finally { setSaving(false); }
   };
 
   const handleDelete = async () => {
@@ -156,27 +133,14 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
     if (!confirm(`"${result.unit.serialNumber}" মুছে ফেলবেন?`)) return;
     setDeleting(true);
     try {
-      const res = await fetch("/api/machines", {
-        method:  "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          factory,
-          machineName:  result.machine.machineName,
-          serialNumber: result.unit.serialNumber,
-        }),
+      const res  = await fetch("/api/machines", {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ factory, machineName: result.machine.machineName, serialNumber: result.unit.serialNumber }),
       });
       const json = await res.json();
-      if (json.success) {
-        showToast("success", "মুছে ফেলা হয়েছে।");
-        setResult(null);
-        setQuery("");
-        if (onSaveSuccess) onSaveSuccess();
-      } else {
-        showToast("error", json.message);
-      }
-    } finally {
-      setDeleting(false);
-    }
+      if (json.success) { showToast("success", "মুছে ফেলা হয়েছে।"); setResult(null); setQuery(""); if (onSaveSuccess) onSaveSuccess(); }
+      else showToast("error", json.message);
+    } finally { setDeleting(false); }
   };
 
   const statusStyle = STATUS_STYLE[editStatus] || STATUS_STYLE.Running;
@@ -185,30 +149,20 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
   return (
     <div className="p-7 space-y-5">
       <div>
-        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">
-          Serial Number দিয়ে খুঁজুন
-        </label>
+        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Serial Number দিয়ে খুঁজুন</label>
         <div className="flex gap-2">
-          <input
-            type="text"
-            value={query}
+          <input type="text" value={query}
             onChange={(e) => { setQuery(e.target.value); setResult(null); setNotFound(false); }}
             onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             placeholder="যেমন: SN-001"
-            className="flex-1 bg-[#0f1117] border border-slate-700 text-white rounded-lg px-4 py-3 text-sm font-mono uppercase focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 transition-colors placeholder:text-slate-600"
-          />
-          <button
-            type="button"
-            onClick={handleSearch}
-            disabled={searching || !query.trim()}
-            className="px-5 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold rounded-lg text-sm transition-all"
-          >
+            className="flex-1 bg-[#0f1117] border border-slate-700 text-white rounded-lg px-4 py-3 text-sm font-mono uppercase focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 transition-colors placeholder:text-slate-600" />
+          <button type="button" onClick={handleSearch} disabled={searching || !query.trim()}
+            className="px-5 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold rounded-lg text-sm transition-all">
             {searching ? "..." : "খুঁজুন"}
           </button>
         </div>
       </div>
 
-      {/* Not found */}
       {notFound && (
         <div className="bg-[#0f1117] border border-slate-800 rounded-xl px-4 py-6 text-center">
           <p className="text-3xl mb-2">🔍</p>
@@ -218,10 +172,8 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
         </div>
       )}
 
-      {/* Result card */}
       {result && (
         <div className="space-y-4">
-          {/* Found info */}
           <div className="bg-[#0f1117] border border-slate-800 rounded-xl p-4">
             <p className="text-[10px] text-cyan-400 uppercase tracking-widest mb-3 font-mono">পাওয়া গেছে</p>
             <div className="space-y-2">
@@ -239,59 +191,37 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-500 text-xs">বর্তমান Status</span>
-                <span className={`font-bold text-sm ${STATUS_TEXT_COLOR[result.unit.status]}`}>
-                  {result.unit.status}
-                </span>
+                <span className={`font-bold text-sm ${STATUS_TEXT_COLOR[result.unit.status]}`}>{result.unit.status}</span>
               </div>
             </div>
           </div>
 
-          {/* Edit section */}
           <div className="space-y-3">
             <p className="text-[10px] text-amber-400 uppercase tracking-widest font-mono">পরিবর্তন করুন</p>
-
             <div className="grid grid-cols-2 gap-3">
-              {/* Floor */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1.5">
-                  Floor
-                </label>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1.5">Floor</label>
                 <div className="relative">
-                  <select
-                    value={editFloor}
-                    onChange={(e) => setEditFloor(e.target.value)}
-                    className="w-full bg-[#0f1117] border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm appearance-none focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 transition-colors"
-                  >
+                  <select value={editFloor} onChange={(e) => setEditFloor(e.target.value)}
+                    className="w-full bg-[#0f1117] border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm appearance-none focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 transition-colors">
                     <option value="">— Floor —</option>
-                    {FLOOR_OPTIONS.map((f) => (
-                      <option key={f.value} value={f.value}>{f.label}</option>
-                    ))}
+                    {FLOOR_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
                   </select>
                   <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs">▾</div>
                 </div>
               </div>
-
-              {/* Status */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1.5">
-                  Status
-                </label>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1.5">Status</label>
                 <div className="relative">
-                  <select
-                    value={editStatus}
-                    onChange={(e) => setEditStatus(e.target.value)}
-                    className={`w-full bg-[#0f1117] border text-white rounded-lg px-3 py-2.5 text-sm appearance-none focus:outline-none focus:ring-1 transition-colors ${statusStyle.ring} ${statusStyle.border}`}
-                  >
-                    {STATUS_OPTIONS.map(({ value, label, icon }) => (
-                      <option key={value} value={value}>{icon} {label}</option>
-                    ))}
+                  <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)}
+                    className={`w-full bg-[#0f1117] border text-white rounded-lg px-3 py-2.5 text-sm appearance-none focus:outline-none focus:ring-1 transition-colors ${statusStyle.ring} ${statusStyle.border}`}>
+                    {STATUS_OPTIONS.map(({ value, label, icon }) => <option key={value} value={value}>{icon} {label}</option>)}
                   </select>
                   <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs">▾</div>
                 </div>
               </div>
             </div>
 
-            {/* Change preview */}
             {changed && (
               <div className={`border rounded-xl px-4 py-3 ${statusStyle.badge}`}>
                 <p className="text-[10px] uppercase tracking-widest opacity-60 mb-2">পরিবর্তন preview</p>
@@ -307,22 +237,13 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
               </div>
             )}
 
-            {/* Action buttons */}
             <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={saving || !editFloor || !changed}
-                className="flex-1 bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-[#0f1117] font-bold py-2.5 rounded-xl text-sm transition-all"
-              >
+              <button type="button" onClick={handleSave} disabled={saving || !editFloor || !changed}
+                className="flex-1 bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-[#0f1117] font-bold py-2.5 rounded-xl text-sm transition-all">
                 {saving ? "সেভ হচ্ছে..." : "✓ আপডেট করুন"}
               </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="px-4 bg-transparent border border-red-800 hover:border-red-500 text-red-400 hover:text-red-300 hover:bg-red-950/30 font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-40"
-              >
+              <button type="button" onClick={handleDelete} disabled={deleting}
+                className="px-4 bg-transparent border border-red-800 hover:border-red-500 text-red-400 hover:text-red-300 hover:bg-red-950/30 font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-40">
                 {deleting ? "..." : "মুছুন"}
               </button>
             </div>
@@ -345,6 +266,10 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
   const [saving,        setSaving]        = useState(false);
   const [deleting,      setDeleting]      = useState(false);
 
+  // ── NEW: serial search query and active status filter ──
+  const [unitSearch,    setUnitSearch]    = useState("");
+  const [statusFilter,  setStatusFilter]  = useState("ALL"); // "ALL" | status value
+
   const loadMachineUnits = useCallback(async (name) => {
     if (!name) { setExistingUnits([]); return; }
     setFetchingUnits(true);
@@ -361,13 +286,12 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
   useEffect(() => {
     loadMachineUnits(machineName);
     setSerialNumber(""); setFloorName(""); setStatus("Running"); setCurrentUnit(null);
+    setUnitSearch(""); setStatusFilter("ALL");
   }, [machineName, loadMachineUnits]);
 
   useEffect(() => {
     if (!serialNumber.trim()) { setCurrentUnit(null); return; }
-    const found = existingUnits.find(
-      (u) => u.serialNumber.toLowerCase() === serialNumber.trim().toLowerCase()
-    );
+    const found = existingUnits.find((u) => u.serialNumber.toLowerCase() === serialNumber.trim().toLowerCase());
     if (found) { setCurrentUnit(found); setFloorName(found.floorName); setStatus(found.status); }
     else        { setCurrentUnit(null); }
   }, [serialNumber, existingUnits]);
@@ -379,7 +303,7 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
     }
     setSaving(true);
     try {
-      const res = await fetch("/api/machines", {
+      const res  = await fetch("/api/machines", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ factory, machineName, serialNumber: serialNumber.trim().toUpperCase(), floorName, status }),
       });
@@ -391,7 +315,7 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
         if (onSaveSuccess) onSaveSuccess();
       } else showToast("error", json.message || "সেভ করতে সমস্যা হয়েছে।");
     } catch { showToast("error", "নেটওয়ার্ক সমস্যা।"); }
-    finally { setSaving(false); }
+    finally  { setSaving(false); }
   };
 
   const handleDelete = async () => {
@@ -399,7 +323,7 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
     if (!confirm(`"${serialNumber}" মুছে ফেলবেন?`)) return;
     setDeleting(true);
     try {
-      const res = await fetch("/api/machines", {
+      const res  = await fetch("/api/machines", {
         method: "DELETE", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ factory, machineName, serialNumber: serialNumber.trim().toUpperCase() }),
       });
@@ -411,8 +335,15 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
         if (onSaveSuccess) onSaveSuccess();
       } else showToast("error", json.message);
     } catch { showToast("error", "নেটওয়ার্ক সমস্যা।"); }
-    finally { setDeleting(false); }
+    finally  { setDeleting(false); }
   };
+
+  // ── Derived: filtered units for the serial list panel ──
+  const filteredUnits = existingUnits.filter((u) => {
+    const matchesSearch = u.serialNumber.toLowerCase().includes(unitSearch.toLowerCase().trim());
+    const matchesStatus = statusFilter === "ALL" || u.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   const unitStats   = existingUnits.reduce((acc, u) => { acc[u.status] = (acc[u.status] || 0) + 1; return acc; }, {});
   const isNew       = serialNumber.trim() && !currentUnit;
@@ -435,42 +366,116 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
         </div>
       </div>
 
-      {/* Stats */}
+      {/* ── Serial List Panel — shown when machine is selected ── */}
       {machineName && (
-        <div className="bg-[#0f1117] border border-slate-800 rounded-xl p-4">
-          <p className="text-xs text-slate-500 uppercase tracking-widest mb-3">
-            {fetchingUnits ? <span className="text-cyan-400 animate-pulse">লোড হচ্ছে...</span> : `মোট ${existingUnits.length}টি unit`}
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {STATUS_OPTIONS.map(({ value, label }) => (
-              <span key={value} className={`text-xs font-semibold px-3 py-1 rounded-full border
-                ${value === "Running"    ? "bg-emerald-950 border-emerald-800 text-emerald-300" : ""}
-                ${value === "Idle"       ? "bg-amber-950 border-amber-800 text-amber-300"       : ""}
-                ${value === "Repairable" ? "bg-orange-950 border-orange-800 text-orange-300"    : ""}
-                ${value === "Damage"     ? "bg-red-950 border-red-800 text-red-300"             : ""}
-              `}>{label}: {unitStats[value] || 0}</span>
-            ))}
-          </div>
-          {existingUnits.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {existingUnits.map((u) => (
-                <button key={u.serialNumber} type="button" onClick={() => setSerialNumber(u.serialNumber)}
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded border transition-all
-                    ${serialNumber === u.serialNumber
-                      ? "bg-cyan-900 border-cyan-500 text-cyan-200"
-                      : "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200"
-                    }`}
-                  title={`${u.floorName} — ${u.status}`}>
-                  {u.serialNumber}
-                  <span className={`ml-1 ${STATUS_TEXT_COLOR[u.status]}`}>•</span>
+        <div className="bg-[#0f1117] border border-slate-800 rounded-xl overflow-hidden">
+
+          {/* Panel header: counts */}
+          <div className="px-4 pt-4 pb-3 border-b border-slate-800">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">
+                {fetchingUnits
+                  ? <span className="text-cyan-400 animate-pulse">লোড হচ্ছে...</span>
+                  : <span>মোট <span className="text-white font-bold">{existingUnits.length}</span>টি unit</span>
+                }
+              </p>
+              {/* Status filter pills */}
+              <div className="flex gap-1.5 flex-wrap justify-end">
+                <button type="button" onClick={() => setStatusFilter("ALL")}
+                  className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-all
+                    ${statusFilter === "ALL" ? "bg-slate-600 border-slate-400 text-white" : "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500"}`}>
+                  ALL {existingUnits.length > 0 && `(${existingUnits.length})`}
                 </button>
-              ))}
+                {STATUS_OPTIONS.map(({ value, label }) => {
+                  const count = unitStats[value] || 0;
+                  if (count === 0) return null;
+                  return (
+                    <button key={value} type="button" onClick={() => setStatusFilter(statusFilter === value ? "ALL" : value)}
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-full border transition-all
+                        ${statusFilter === value
+                          ? STATUS_BADGE_MINI[value] + " opacity-100"
+                          : "bg-slate-800 border-slate-700 text-slate-400 hover:border-slate-500"}`}>
+                      {label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Search box */}
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs pointer-events-none">🔍</span>
+              <input
+                type="text"
+                value={unitSearch}
+                onChange={(e) => setUnitSearch(e.target.value)}
+                placeholder="Serial number খুঁজুন..."
+                className="w-full bg-[#161b27] border border-slate-700 text-white rounded-lg pl-8 pr-4 py-2 text-xs font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition-colors placeholder:text-slate-600"
+              />
+              {unitSearch && (
+                <button type="button" onClick={() => setUnitSearch("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs font-bold">✕</button>
+              )}
+            </div>
+          </div>
+
+          {/* Scrollable serial list */}
+          <div className="overflow-y-auto" style={{ maxHeight: 220 }}>
+            {fetchingUnits ? (
+              <div className="flex items-center justify-center py-8">
+                <span className="text-cyan-400 text-xs animate-pulse font-mono">লোড হচ্ছে...</span>
+              </div>
+            ) : filteredUnits.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-slate-600 gap-2">
+                <span className="text-2xl">📭</span>
+                <span className="text-xs">
+                  {unitSearch || statusFilter !== "ALL" ? "কোনো ফলাফল নেই" : "কোনো unit যোগ করা হয়নি"}
+                </span>
+              </div>
+            ) : (
+              <div className="p-3 grid grid-cols-1 gap-1">
+                {filteredUnits.map((u) => {
+                  const isSelected = serialNumber === u.serialNumber;
+                  return (
+                    <button
+                      key={u.serialNumber}
+                      type="button"
+                      onClick={() => setSerialNumber(u.serialNumber)}
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-left transition-all group
+                        ${isSelected
+                          ? "bg-cyan-900/60 border-cyan-500 shadow-sm shadow-cyan-500/20"
+                          : "bg-[#161b27] border-slate-800 hover:border-slate-600 hover:bg-slate-800/60"}`}
+                    >
+                      {/* Left: serial + floor */}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className={`text-xs font-mono font-bold shrink-0 ${isSelected ? "text-cyan-300" : "text-slate-200"}`}>
+                          {u.serialNumber}
+                        </span>
+                        <span className={`text-[10px] shrink-0 ${isSelected ? "text-cyan-400/70" : "text-slate-500"}`}>
+                          {u.floorName}
+                        </span>
+                      </div>
+                      {/* Right: status badge */}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ml-2 ${STATUS_BADGE_MINI[u.status]}`}>
+                        {u.status}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Footer: result count */}
+          {(unitSearch || statusFilter !== "ALL") && !fetchingUnits && (
+            <div className="px-4 py-2 border-t border-slate-800 text-[10px] text-slate-500 font-mono">
+              {filteredUnits.length} / {existingUnits.length} দেখাচ্ছে
             </div>
           )}
         </div>
       )}
 
-      {/* Serial Number */}
+      {/* Serial Number input */}
       <div>
         <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">
           Serial Number <span className="text-red-400">*</span>
@@ -543,7 +548,7 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
             {deleting ? "..." : "মুছুন"}
           </button>
         )}
-        <button type="button" onClick={() => { setMachineName(""); setSerialNumber(""); setFloorName(""); setStatus("Running"); setExistingUnits([]); setCurrentUnit(null); }}
+        <button type="button" onClick={() => { setMachineName(""); setSerialNumber(""); setFloorName(""); setStatus("Running"); setExistingUnits([]); setCurrentUnit(null); setUnitSearch(""); setStatusFilter("ALL"); }}
           className="px-5 bg-transparent border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 font-semibold py-3 rounded-xl text-sm tracking-widest uppercase transition-all">
           রিসেট
         </button>
@@ -554,7 +559,7 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
 export default function MachineInventoryForm({ onSaveSuccess, factory = "" }) {
-  const [tab,   setTab]   = useState("search"); // "search" | "machine"
+  const [tab,   setTab]   = useState("search");
   const [toast, setToast] = useState(null);
 
   const showToast = (type, msg) => {
@@ -578,18 +583,14 @@ export default function MachineInventoryForm({ onSaveSuccess, factory = "" }) {
 
       {/* Tabs */}
       <div className="flex mx-7 mt-5 border border-slate-800 rounded-xl overflow-hidden">
-        <button
-          onClick={() => setTab("search")}
+        <button onClick={() => setTab("search")}
           className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-widest transition-all
-            ${tab === "search" ? "bg-cyan-900 text-cyan-300 border-b-2 border-cyan-400" : "bg-[#161b27] text-slate-500 hover:text-slate-300"}`}
-        >
+            ${tab === "search" ? "bg-cyan-900 text-cyan-300 border-b-2 border-cyan-400" : "bg-[#161b27] text-slate-500 hover:text-slate-300"}`}>
           🔍 Serial খুঁজুন
         </button>
-        <button
-          onClick={() => setTab("machine")}
+        <button onClick={() => setTab("machine")}
           className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-widest transition-all
-            ${tab === "machine" ? "bg-cyan-900 text-cyan-300 border-b-2 border-cyan-400" : "bg-[#161b27] text-slate-500 hover:text-slate-300"}`}
-        >
+            ${tab === "machine" ? "bg-cyan-900 text-cyan-300 border-b-2 border-cyan-400" : "bg-[#161b27] text-slate-500 hover:text-slate-300"}`}>
           ＋ Machine ভিত্তিক
         </button>
       </div>
@@ -598,8 +599,8 @@ export default function MachineInventoryForm({ onSaveSuccess, factory = "" }) {
       <div className="mx-7 mt-4 bg-[#161b27] border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
         <div className="h-1 w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500" />
         {tab === "search"
-          ? <SerialSearchTab  factory={factory} onSaveSuccess={onSaveSuccess} showToast={showToast} />
-          : <MachineEditTab   factory={factory} onSaveSuccess={onSaveSuccess} showToast={showToast} />
+          ? <SerialSearchTab factory={factory} onSaveSuccess={onSaveSuccess} showToast={showToast} />
+          : <MachineEditTab  factory={factory} onSaveSuccess={onSaveSuccess} showToast={showToast} />
         }
       </div>
 
