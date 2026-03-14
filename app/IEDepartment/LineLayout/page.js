@@ -75,43 +75,47 @@ function toAbbr(t) {
 }
 
 // ─── openPrintWindow ─────────────────────────────────────────────────────────
-// Injects a hidden iframe into the REAL document body (outside any scale wrapper),
-// writes the print HTML into it, then calls iframe.contentWindow.print().
-// No popup blocker issues, no CSP issues, no portal/transform issues.
+// ─── openPrintWindow (FIXED) ──────────────────────────────────────────────────
+// BUG: old code did  bySn[p.serialNo] = p   → last write wins, first machine lost
+// FIX: store arrays  bySn[p.serialNo].push(p) → all machines kept
+// Then zip left-array + right-array → one <tr> per entry in the longer array.
 function openPrintWindow(layout) {
   if (!layout) return;
-
+ 
   const procs = [...(layout.processes || [])].sort((a, b) => a.serialNo - b.serialNo);
-  const bySn  = {};
-  procs.forEach(p => { bySn[p.serialNo] = p; });
+ 
+  // ✅ FIX: arrays instead of single values
+  const bySn = {};
+  procs.forEach((p) => {
+    if (!bySn[p.serialNo]) bySn[p.serialNo] = [];
+    bySn[p.serialNo].push(p);
+  });
+ 
   const maxSn = procs.length ? procs[procs.length - 1].serialNo : 0;
-
+ 
   const pairs = [];
   for (let sn = 1; sn <= maxSn; sn += 2) {
-    const L = bySn[sn]     || null;
-    const R = bySn[sn + 1] || null;
+    const L = bySn[sn]     || null;   // array | null
+    const R = bySn[sn + 1] || null;   // array | null
     if (!L && !R) continue;
-    pairs.push({ sn, L, R });
+    pairs.push({ L, R });
   }
-
-  // Machine summary — full name as key, exclude HELPER
+ 
+  // Machine summary — full name, exclude HELPER
   const machSummary = {};
-  procs.forEach(p => {
+  procs.forEach((p) => {
     if (!p.machineType || p.machineType === "HELPER") return;
-    const fullName = p.machineType; // use full name, no abbreviation
-    machSummary[fullName] = (machSummary[fullName] || 0) + (p.machines?.length || 1);
+    machSummary[p.machineType] = (machSummary[p.machineType] || 0) + (p.machines?.length || 1);
   });
-  // Total excludes HELPER
   const machTotal = Object.values(machSummary).reduce((a, b) => a + b, 0);
-
-  // ── Build HTML string ──
-  const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-
+ 
+  const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+ 
   const infoRows = [
-    ["Unit",  `${layout.floor} - LINE NO-${layout.lineNo}`, "Plan Efficiency :",                       `${layout.planEfficiency}%`],
-    ["Buyer", layout.buyer,                                  "Op + Hel + Seam Sealing",                `${layout.operator}+${layout.helper}+${layout.seamSealing}`],
-    ["Style", layout.style,                                  "Manpower:",                              layout.manpower],
-    ["Item",  layout.item,                                   "1 Hour Target:",                         layout.oneHourTarget],
+    ["Unit",  `${layout.floor} - LINE NO-${layout.lineNo}`, "Plan Efficiency :",                            `${layout.planEfficiency}%`],
+    ["Buyer", layout.buyer,                                  "Op + Hel + Seam Sealing",                     `${layout.operator}+${layout.helper}+${layout.seamSealing}`],
+    ["Style", layout.style,                                  "Manpower:",                                   layout.manpower],
+    ["Item",  layout.item,                                   "1 Hour Target:",                              layout.oneHourTarget],
     ["SMV",   layout.smv,                                    `Total Daily Target (${layout.workingHours}hrs)`, layout.dailyTarget],
   ].map(([l, v, l2, v2]) => `
     <tr style="height:18px">
@@ -120,36 +124,49 @@ function openPrintWindow(layout) {
       <td colspan="2" style="border:1px solid #000;font-weight:bold;text-align:right;padding:1px 3px">${esc(l2)}</td>
       <td colspan="2" style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 3px">${esc(v2)}</td>
     </tr>`).join("");
-
-  // Process rows — full machine name, NO QC check rows
-  const processRows = pairs.map(({ sn, L, R }) => {
-    return `<tr style="height:22px">
-      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:8px;padding:1px 3px">${esc(L?.serialNo)}</td>
-      <td style="border:1px solid #000;font-weight:bold;font-size:7px;padding:1px 3px;white-space:normal">${esc(L?.processName)}</td>
-      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6.5px;padding:1px 3px;white-space:normal;line-height:1.2">${esc(L?.machineType ?? "")}</td>
-      <td style="border:none"></td>
-      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:8px;padding:1px 3px">${esc(R?.serialNo)}</td>
-      <td style="border:1px solid #000;font-weight:bold;font-size:7px;padding:1px 3px;white-space:normal">${esc(R?.processName)}</td>
-      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6.5px;padding:1px 3px;white-space:normal;line-height:1.2">${esc(R?.machineType ?? "")}</td>
-      <td style="border:none"></td>
-    </tr>`;
+ 
+  // ── Render 3 TDs for one process entry (or 3 empty TDs if null) ──────────
+  function cellHtml(e) {
+    if (!e) return `
+      <td style="border:1px solid #000;padding:1px 3px"></td>
+      <td style="border:1px solid #000;padding:1px 3px"></td>
+      <td style="border:1px solid #000;padding:1px 3px"></td>`;
+    return `
+      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:8px;padding:1px 3px">${esc(e.serialNo)}</td>
+      <td style="border:1px solid #000;font-weight:bold;font-size:7px;padding:1px 3px;white-space:normal">${esc(e.processName)}</td>
+      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6.5px;padding:1px 3px;white-space:normal;line-height:1.2">${esc(e.machineType ?? "")}</td>`;
+  }
+ 
+  // ✅ FIX: zip left[] + right[] — produces one <tr> per machine in the longer array
+  const processRows = pairs.map(({ L, R }) => {
+    const la = L || [];
+    const ra = R || [];
+    const n  = Math.max(la.length, ra.length);
+    let html = "";
+    for (let i = 0; i < n; i++) {
+      html += `<tr style="height:22px">
+        ${cellHtml(la[i] ?? null)}
+        <td style="border:none"></td>
+        ${cellHtml(ra[i] ?? null)}
+        <td style="border:none"></td>
+      </tr>`;
+    }
+    return html;
   }).join("");
-
-  // Machine summary rows — full names, no HELPER
+ 
   const machRows = Object.entries(machSummary).map(([m, q]) =>
     `<tr style="height:16px">
       <td style="border:1px solid #000;padding:1px 3px;font-size:7px">${esc(m)}</td>
       <td style="border:1px solid #000;text-align:center;font-size:7.5px;padding:1px 3px">${q}</td>
     </tr>`
   ).join("");
-
-  // Sketch image — embed as <img> if sketchUrl exists
+ 
   const sketchCell = layout.sketchUrl
     ? `<td style="border:1px solid #000;text-align:center;padding:2px;width:18%">
         <img src="${esc(layout.sketchUrl)}" style="max-height:52px;max-width:100%;object-fit:contain;" crossorigin="anonymous"/>
        </td>`
     : `<td style="border:1px solid #000;width:18%"></td>`;
-
+ 
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -166,8 +183,7 @@ function openPrintWindow(layout) {
 </head>
 <body>
   <div>
-
-    <!-- Header: Company name + sketch image side by side -->
+ 
     <table style="width:100%;margin-bottom:2px">
       <tr>
         <td style="border:1px solid #000;font-weight:bold;font-size:11px;text-align:center;padding:3px 6px;width:82%">
@@ -176,13 +192,11 @@ function openPrintWindow(layout) {
         ${sketchCell}
       </tr>
     </table>
-
-    <!-- MACHINE LAYOUT title -->
+ 
     <table style="width:100%;margin-bottom:2px">
       <tr><td style="border:1px solid #000;font-weight:bold;font-size:11px;text-align:center;padding:3px 6px;background:#FFFF00">MACHINE LAYOUT</td></tr>
     </table>
-
-    <!-- Info block -->
+ 
     <table style="width:100%;margin-bottom:5px">
       <colgroup>
         <col style="width:11%"><col style="width:32%"><col style="width:3%"><col style="width:18%">
@@ -190,8 +204,7 @@ function openPrintWindow(layout) {
       </colgroup>
       <tbody>${infoRows}</tbody>
     </table>
-
-    <!-- Process table — full machine names, no QC check rows -->
+ 
     <table style="width:100%;margin-bottom:8px">
       <colgroup>
         <col style="width:5%"><col style="width:30%"><col style="width:13%"><col style="width:2%">
@@ -211,8 +224,7 @@ function openPrintWindow(layout) {
       </thead>
       <tbody>${processRows}</tbody>
     </table>
-
-    <!-- Machine summary — full names, no HELPER -->
+ 
     <table style="width:45%;margin-bottom:18px">
       <tr>
         <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">Machine Name</td>
@@ -224,8 +236,7 @@ function openPrintWindow(layout) {
         <td style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 3px">${machTotal}</td>
       </tr>
     </table>
-
-    <!-- Signature row -->
+ 
     <table style="width:100%">
       <colgroup><col style="width:25%"><col style="width:25%"><col style="width:25%"><col style="width:25%"></colgroup>
       <tr style="height:38px">
@@ -235,35 +246,27 @@ function openPrintWindow(layout) {
         <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px">Maintenance Supervisor</td>
       </tr>
     </table>
-
+ 
   </div>
 </body>
 </html>`;
-
-  // Remove any previous print iframe
+ 
   const old = document.getElementById("ll-print-iframe");
   if (old) old.remove();
-
-  // Create hidden iframe appended directly to body (outside any React/scale wrapper)
+ 
   const iframe = document.createElement("iframe");
   iframe.id = "ll-print-iframe";
   iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;";
   document.body.appendChild(iframe);
-
+ 
   const iDoc = iframe.contentDocument || iframe.contentWindow.document;
   iDoc.open();
   iDoc.write(html);
   iDoc.close();
-
-  // Small delay lets the browser finish rendering the iframe content before printing
+ 
   setTimeout(() => {
-    try {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-    } catch(e) {
-      console.error("iframe print failed:", e);
-    }
-    // Remove iframe 10s after print dialog opens
+    try { iframe.contentWindow.focus(); iframe.contentWindow.print(); }
+    catch (e) { console.error("iframe print failed:", e); }
     setTimeout(() => { iframe.remove(); }, 10000);
   }, 500);
 }

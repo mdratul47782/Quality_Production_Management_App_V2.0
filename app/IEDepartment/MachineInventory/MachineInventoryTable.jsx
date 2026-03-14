@@ -130,7 +130,7 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
       });
       const json = await res.json();
       if (json.success) {
-        showToast("success", "আপডেট হয়েছে!");
+        showToast("success", "Updated!");
         setSelected(null);
         await load();
         if (onSaved) onSaved();
@@ -140,7 +140,7 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
 
   const handleDelete = async () => {
     if (!selected) return;
-    if (!confirm(`"${selected.serialNumber}" মুছে ফেলবেন?`)) return;
+    if (!confirm(`"${selected.serialNumber}" Delete?`)) return;
     setDeleting(true);
     try {
       const res = await fetch("/api/machines", {
@@ -150,7 +150,7 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
       });
       const json = await res.json();
       if (json.success) {
-        showToast("success", "মুছে ফেলা হয়েছে।");
+        showToast("success", "Machine deleted successfully.");
         setSelected(null);
         await load();
         if (onSaved) onSaved();
@@ -192,7 +192,7 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
               {!floorName && (
                 <>
                   <span className="text-slate-500 text-xs">·</span>
-                  <span className="text-xs text-slate-400">সব Floor</span>
+                  <span className="text-xs text-slate-400">All Floors</span>
                 </>
               )}
             </div>
@@ -204,8 +204,8 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
           <p className="text-white font-bold text-sm truncate">{machineName}</p>
           {!loading && (
             <p className="text-xs text-slate-400 mt-0.5">
-              {units.length}টি unit
-              {!floorName && <span className="ml-1 text-slate-500">(সব floor মিলিয়ে)</span>}
+              {units.length} unit
+              {!floorName && <span className="ml-1 text-slate-500">(All Floor)</span>}
             </p>
           )}
         </div>
@@ -213,13 +213,13 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
         {/* Unit list — grouped by floor when floorName is null */}
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
-            <p className="text-slate-600 text-xs animate-pulse text-center py-10">লোড হচ্ছে...</p>
+            <p className="text-slate-600 text-xs animate-pulse text-center py-10">Loading...</p>
           ) : units.length === 0 ? (
-            <p className="text-slate-600 text-xs text-center py-10">কোনো unit নেই।</p>
+            <p className="text-slate-600 text-xs text-center py-10">There is no unit.</p>
           ) : (
             <div className="space-y-1.5">
               <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-3 font-mono">
-                Serial select করুন → edit করুন
+                 select Serial → Edit 
               </p>
 
               {/* When no floorName (Repairable/Damage): group by floor */}
@@ -297,12 +297,12 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
         {selected && (
           <div className="border-t border-slate-800 bg-[#161b27] p-4 space-y-3 shrink-0">
             <p className="text-[10px] text-amber-400 uppercase tracking-widest font-bold">
-              ✎ {selected.serialNumber} — পরিবর্তন করুন
+              ✎ {selected.serialNumber} — Update
             </p>
 
             {/* Current info */}
             <div className="flex items-center gap-3 bg-[#0f1117] border border-slate-800 rounded-lg px-3 py-2 text-xs">
-              <span className="text-slate-500">বর্তমান:</span>
+              <span className="text-slate-500">Current:</span>
               <span className="text-white font-bold">{selected.floorName}</span>
               <span className="text-slate-600">·</span>
               <span className={`font-bold ${STATUS_STYLE[selected.status]?.cell || "text-slate-300"}`}>{selected.status}</span>
@@ -356,7 +356,7 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
                 disabled={saving || !changed}
                 className="flex-1 bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-[#0f1117] font-bold py-2.5 rounded-xl text-xs transition-all"
               >
-                {saving ? "সেভ হচ্ছে..." : "✓ আপডেট করুন"}
+                {saving ? "Saving..." : "✓ Update"}
               </button>
               <button
                 type="button"
@@ -364,14 +364,14 @@ function FloorCellDrawer({ machineName, floorName, status, factory, onClose, onS
                 disabled={deleting}
                 className="px-3 border border-red-800 hover:border-red-500 text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded-xl text-xs transition-all disabled:opacity-40"
               >
-                {deleting ? "..." : "মুছুন"}
+                {deleting ? "..." : "Delete"}
               </button>
               <button
                 type="button"
                 onClick={() => setSelected(null)}
                 className="px-3 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 rounded-xl text-xs transition-all"
               >
-                বাতিল
+                Cancel
               </button>
             </div>
           </div>
@@ -401,13 +401,13 @@ function UnitDetailPanel({ machineName, factory, refreshKey }) {
     load();
   }, [machineName, factory, refreshKey]);
 
-  if (loading) return <p className="text-slate-600 text-xs animate-pulse">লোড হচ্ছে...</p>;
-  if (!units.length) return <p className="text-slate-600 text-xs">কোনো unit নেই।</p>;
+  if (loading) return <p className="text-slate-600 text-xs animate-pulse">Loading...</p>;
+  if (!units.length) return <p className="text-slate-600 text-xs">There is no unit.</p>;
 
   return (
     <div>
       <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-3 font-mono">
-        {machineName} — {units.length}টি unit
+        {machineName} — {units.length} unit
       </p>
       <div className="flex flex-wrap gap-2">
         {units
@@ -517,11 +517,11 @@ export default function MachineInventoryTable({ refreshKey, factory = "" }) {
         </div>
         <div className="flex items-center gap-3">
           <p className="text-[10px] text-slate-600 font-mono hidden md:block">
-            💡 Floor cell এ click করুন → serial list দেখুন ও edit করুন
+            💡 Click on Floor cell → view and edit serial list
           </p>
           <input
             type="text"
-            placeholder="Machine খুঁজুন..."
+            placeholder="Find Machine ..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="bg-[#161b27] border border-slate-700 text-white text-xs rounded-lg px-3 py-1.5 w-52 focus:outline-none focus:border-cyan-500"
@@ -532,9 +532,9 @@ export default function MachineInventoryTable({ refreshKey, factory = "" }) {
       {/* Table */}
       <div className="overflow-auto flex-1">
         {loading ? (
-          <div className="flex items-center justify-center h-48 text-slate-500 text-sm animate-pulse">ডেটা লোড হচ্ছে...</div>
+          <div className="flex items-center justify-center h-48 text-slate-500 text-sm animate-pulse">Loading data...</div>
         ) : filtered.length === 0 ? (
-          <div className="flex items-center justify-center h-48 text-slate-600 text-sm">কোনো ডেটা পাওয়া যায়নি।</div>
+          <div className="flex items-center justify-center h-48 text-slate-600 text-sm">No data found.</div>
         ) : (
           <table className="w-full border-collapse text-xs" style={{ minWidth: "1600px" }}>
             <thead className="sticky top-0 z-10">
