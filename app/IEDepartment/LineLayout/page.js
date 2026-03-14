@@ -2,7 +2,6 @@
 // app/IEDepartment/LineLayout/page.jsx
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import ReactDOM from "react-dom";
 import { useAuth } from "@/app/hooks/useAuth";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -75,45 +74,12 @@ function toAbbr(t) {
   return t;
 }
 
-// ─── PrintLayout component — rendered via Portal directly on body ─────────────
-// KEY FIX: ReactDOM.createPortal escapes the scale(0.67) wrapper so
-//          position:fixed works correctly and print CSS targets the right element.
-function PrintLayout({ layout, onClose }) {
-  const [mounted, setMounted] = useState(false);
-
-  // Inject print CSS once
-  useEffect(() => {
-    setMounted(true);
-    const id = "ll-print-style";
-    if (!document.getElementById(id)) {
-      const s = document.createElement("style");
-      s.id = id;
-      s.textContent = `
-        @media print {
-          body > *:not(#ll-portal-root) { display: none !important; }
-          #ll-portal-root {
-            position: fixed !important; inset: 0 !important;
-            background: #fff !important; z-index: 99999 !important;
-            overflow: visible !important; padding: 0 !important; margin: 0 !important;
-          }
-          #ll-topbar { display: none !important; }
-          #ll-page {
-            box-shadow: none !important; margin: 0 !important;
-            width: 100% !important; padding: 8mm 9mm !important;
-          }
-          @page { size: A4 portrait; margin: 0; }
-          tr { page-break-inside: avoid; }
-          thead { display: table-header-group; }
-        }
-      `;
-      document.head.appendChild(s);
-    }
-    // Prevent body scroll while print overlay is open
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = ""; };
-  }, []);
-
-  if (!layout || !mounted) return null;
+// ─── openPrintWindow ─────────────────────────────────────────────────────────
+// Injects a hidden iframe into the REAL document body (outside any scale wrapper),
+// writes the print HTML into it, then calls iframe.contentWindow.print().
+// No popup blocker issues, no CSP issues, no portal/transform issues.
+function openPrintWindow(layout) {
+  if (!layout) return;
 
   const procs = [...(layout.processes || [])].sort((a, b) => a.serialNo - b.serialNo);
   const bySn  = {};
@@ -128,217 +94,178 @@ function PrintLayout({ layout, onClose }) {
     pairs.push({ sn, L, R });
   }
 
-  // Machine summary
+  // Machine summary — full name as key, exclude HELPER
   const machSummary = {};
   procs.forEach(p => {
-    const a = toAbbr(p.machineType);
-    if (p.machineType === "HELPER") {
-      machSummary["HELPER"] = (machSummary["HELPER"] || 0) + 1;
-    } else {
-      machSummary[a] = (machSummary[a] || 0) + (p.machines?.length || 1);
-    }
+    if (!p.machineType || p.machineType === "HELPER") return;
+    const fullName = p.machineType; // use full name, no abbreviation
+    machSummary[fullName] = (machSummary[fullName] || 0) + (p.machines?.length || 1);
   });
+  // Total excludes HELPER
+  const machTotal = Object.values(machSummary).reduce((a, b) => a + b, 0);
 
-  const bdr = "1px solid #000";
-  function tdStyle(extra = {}) {
-    return {
-      border: bdr, fontFamily: "Arial, sans-serif", fontSize: 7.5,
-      padding: "1px 3px", verticalAlign: "middle", lineHeight: 1.25,
-      ...extra,
-    };
-  }
+  // ── Build HTML string ──
+  const esc = (s) => String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 
-  const content = (
-    // ── Portal root: sits directly on body, NOT inside the scaled wrapper ──
-    <div id="ll-portal-root" style={{
-      position: "fixed", inset: 0, zIndex: 99999,
-      background: "#9ca3af", overflowY: "auto",
-      fontFamily: "Arial, sans-serif",
-    }}>
-      {/* Top bar — hidden on print */}
-      <div id="ll-topbar" style={{
-        position: "sticky", top: 0, zIndex: 200, background: "#1e293b",
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "8px 20px",
-      }}>
-        <span style={{ color: "#fff", fontWeight: 800, fontSize: 14 }}>
-          🖨&nbsp; Print Preview — Line Layout
-        </span>
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => window.print()} style={{
-            background: "#2563eb", color: "#fff", border: "none",
-            padding: "8px 22px", borderRadius: 6, fontWeight: 800, fontSize: 13, cursor: "pointer",
-          }}>
-            ⬇ Print / Save as PDF
-          </button>
-          <button onClick={onClose} style={{
-            background: "#475569", color: "#fff", border: "none",
-            padding: "8px 16px", borderRadius: 6, fontWeight: 700, fontSize: 13, cursor: "pointer",
-          }}>
-            ✕ Close
-          </button>
-        </div>
-      </div>
+  const infoRows = [
+    ["Unit",  `${layout.floor} - LINE NO-${layout.lineNo}`, "Plan Efficiency :",                       `${layout.planEfficiency}%`],
+    ["Buyer", layout.buyer,                                  "Op + Hel + Seam Sealing",                `${layout.operator}+${layout.helper}+${layout.seamSealing}`],
+    ["Style", layout.style,                                  "Manpower:",                              layout.manpower],
+    ["Item",  layout.item,                                   "1 Hour Target:",                         layout.oneHourTarget],
+    ["SMV",   layout.smv,                                    `Total Daily Target (${layout.workingHours}hrs)`, layout.dailyTarget],
+  ].map(([l, v, l2, v2]) => `
+    <tr style="height:18px">
+      <td style="border:1px solid #000;font-weight:bold;padding:1px 3px">${esc(l)}</td>
+      <td colspan="3" style="border:1px solid #000;padding:1px 3px">${esc(v)}</td>
+      <td colspan="2" style="border:1px solid #000;font-weight:bold;text-align:right;padding:1px 3px">${esc(l2)}</td>
+      <td colspan="2" style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 3px">${esc(v2)}</td>
+    </tr>`).join("");
 
-      {/* A4 Paper */}
-      <div id="ll-page" style={{
-        width: 794, minHeight: 1123, margin: "18px auto 40px",
-        background: "#fff", padding: "14px 16px",
-        boxShadow: "0 4px 24px rgba(0,0,0,0.3)",
-      }}>
+  // Process rows — full machine name, NO QC check rows
+  const processRows = pairs.map(({ sn, L, R }) => {
+    return `<tr style="height:22px">
+      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:8px;padding:1px 3px">${esc(L?.serialNo)}</td>
+      <td style="border:1px solid #000;font-weight:bold;font-size:7px;padding:1px 3px;white-space:normal">${esc(L?.processName)}</td>
+      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6.5px;padding:1px 3px;white-space:normal;line-height:1.2">${esc(L?.machineType ?? "")}</td>
+      <td style="border:none"></td>
+      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:8px;padding:1px 3px">${esc(R?.serialNo)}</td>
+      <td style="border:1px solid #000;font-weight:bold;font-size:7px;padding:1px 3px;white-space:normal">${esc(R?.processName)}</td>
+      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6.5px;padding:1px 3px;white-space:normal;line-height:1.2">${esc(R?.machineType ?? "")}</td>
+      <td style="border:none"></td>
+    </tr>`;
+  }).join("");
 
-        {/* Company name */}
-        <table style={{ width: "100%", borderCollapse: "collapse" }}><tbody>
-          <tr><td style={tdStyle({ fontWeight: "bold", fontSize: 11, textAlign: "center", padding: "3px 6px" })}>
-            HKD OUTDOOR INNOVATIONS LTD
-          </td></tr>
-        </tbody></table>
+  // Machine summary rows — full names, no HELPER
+  const machRows = Object.entries(machSummary).map(([m, q]) =>
+    `<tr style="height:16px">
+      <td style="border:1px solid #000;padding:1px 3px;font-size:7px">${esc(m)}</td>
+      <td style="border:1px solid #000;text-align:center;font-size:7.5px;padding:1px 3px">${q}</td>
+    </tr>`
+  ).join("");
 
-        {/* MACHINE LAYOUT title */}
-        <table style={{ width: "100%", borderCollapse: "collapse" }}><tbody>
-          <tr><td style={tdStyle({ fontWeight: "bold", fontSize: 11, textAlign: "center", padding: "3px 6px", background: "#FFFF00" })}>
-            MACHINE LAYOUT
-          </td></tr>
-        </tbody></table>
+  // Sketch image — embed as <img> if sketchUrl exists
+  const sketchCell = layout.sketchUrl
+    ? `<td style="border:1px solid #000;text-align:center;padding:2px;width:18%">
+        <img src="${esc(layout.sketchUrl)}" style="max-height:52px;max-width:100%;object-fit:contain;" crossorigin="anonymous"/>
+       </td>`
+    : `<td style="border:1px solid #000;width:18%"></td>`;
 
-        {/* Info block */}
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <colgroup>
-            <col style={{ width: "11%" }}/><col style={{ width: "32%" }}/>
-            <col style={{ width: "3%" }} /><col style={{ width: "18%" }}/>
-            <col style={{ width: "3%" }} /><col style={{ width: "3%" }}/>
-            <col style={{ width: "18%" }}/><col style={{ width: "12%" }}/>
-          </colgroup>
-          <tbody>
-            {[
-              ["Unit",  `${layout.floor} – LINE NO-${layout.lineNo}`, "Plan Efficiency :",       `${layout.planEfficiency}%`],
-              ["Buyer", layout.buyer,                                  "Op+ Hel+Seam Sealing",   `${layout.operator}+${layout.helper}+${layout.seamSealing}`],
-              ["Style", layout.style,                                  "Manpower:",              layout.manpower],
-              ["Item",  layout.item,                                   "1 Hour Tgt:",            layout.oneHourTarget],
-              ["SMV",   layout.smv,                                    `Total Daily tgt (${layout.workingHours}hrs)`, layout.dailyTarget],
-            ].map(([lbl, val, lbl2, val2]) => (
-              <tr key={lbl} style={{ height: 18 }}>
-                <td style={tdStyle({ fontWeight: "bold" })}>{lbl}</td>
-                <td colSpan={3} style={tdStyle()}>{val}</td>
-                <td colSpan={2} style={tdStyle({ fontWeight: "bold", textAlign: "right" })}>{lbl2}</td>
-                <td colSpan={2} style={tdStyle({ fontWeight: "bold", textAlign: "center" })}>{val2}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Line Layout - ${esc(layout.floor)} Line ${esc(layout.lineNo)}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 8mm 9mm; font-family: Arial, sans-serif; font-size: 7.5px; background: #fff; }
+    table { border-collapse: collapse; }
+    @page { size: A4 portrait; margin: 0; }
+    tr { page-break-inside: avoid; }
+    thead { display: table-header-group; }
+  </style>
+</head>
+<body>
+  <div>
 
-        <div style={{ height: 5 }} />
+    <!-- Header: Company name + sketch image side by side -->
+    <table style="width:100%;margin-bottom:2px">
+      <tr>
+        <td style="border:1px solid #000;font-weight:bold;font-size:11px;text-align:center;padding:3px 6px;width:82%">
+          HKD OUTDOOR INNOVATIONS LTD
+        </td>
+        ${sketchCell}
+      </tr>
+    </table>
 
-        {/* Main process table */}
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <colgroup>
-            <col style={{ width: "5%" }}/>
-            <col style={{ width: "33%" }}/>
-            <col style={{ width: "10%" }}/>
-            <col style={{ width: "2%" }}/>
-            <col style={{ width: "5%" }}/>
-            <col style={{ width: "33%" }}/>
-            <col style={{ width: "10%" }}/>
-            <col style={{ width: "2%" }}/>
-          </colgroup>
-          <thead>
-            <tr>
-              {["SL NO", "Process Name", "Machine"].map(h => (
-                <td key={h} style={tdStyle({ fontWeight: "bold", textAlign: "center", background: "#FFFF00" })}>{h}</td>
-              ))}
-              <td style={{ border: "none" }}/>
-              {["SL NO", "Process Name", "Machine"].map(h => (
-                <td key={h + "r"} style={tdStyle({ fontWeight: "bold", textAlign: "center", background: "#FFFF00" })}>{h}</td>
-              ))}
-              <td style={{ border: "none" }}/>
-            </tr>
-          </thead>
-          <tbody>
-            {pairs.map(({ sn, L, R }) => {
-              const rows = [];
-              if (sn === 29 || sn === 37) {
-                rows.push(
-                  <tr key={`qc-${sn}`} style={{ height: 14 }}>
-                    <td colSpan={7} style={tdStyle({ fontWeight: "bold", textAlign: "center", background: "#FFF2CC", fontSize: 8, letterSpacing: "0.1em" })}>
-                      QC check
-                    </td>
-                    <td style={{ border: "none" }}/>
-                  </tr>
-                );
-              }
-              rows.push(
-                <tr key={sn} style={{ height: 22 }}>
-                  <td style={tdStyle({ textAlign: "center", fontWeight: "bold", fontSize: 8 })}>{L?.serialNo ?? ""}</td>
-                  <td style={tdStyle({ fontWeight: "bold", fontSize: 7, whiteSpace: "normal" })}>{L?.processName ?? ""}</td>
-                  <td style={tdStyle({ textAlign: "center", fontWeight: "bold", fontSize: 7 })}>{L ? toAbbr(L.machineType) : ""}</td>
-                  <td style={{ border: "none" }}/>
-                  <td style={tdStyle({ textAlign: "center", fontWeight: "bold", fontSize: 8 })}>{R?.serialNo ?? ""}</td>
-                  <td style={tdStyle({ fontWeight: "bold", fontSize: 7, whiteSpace: "normal" })}>{R?.processName ?? ""}</td>
-                  <td style={tdStyle({ textAlign: "center", fontWeight: "bold", fontSize: 7 })}>{R ? toAbbr(R.machineType) : ""}</td>
-                  <td style={{ border: "none" }}/>
-                </tr>
-              );
-              return rows;
-            })}
-          </tbody>
-        </table>
+    <!-- MACHINE LAYOUT title -->
+    <table style="width:100%;margin-bottom:2px">
+      <tr><td style="border:1px solid #000;font-weight:bold;font-size:11px;text-align:center;padding:3px 6px;background:#FFFF00">MACHINE LAYOUT</td></tr>
+    </table>
 
-        {/* Final QC check */}
-        <table style={{ width: "100%", borderCollapse: "collapse" }}><tbody>
-          <tr style={{ height: 14 }}>
-            <td style={tdStyle({ fontWeight: "bold", textAlign: "center", background: "#FFF2CC", fontSize: 8, letterSpacing: "0.1em", width: "83%" })}>
-              QC check
-            </td>
-            <td style={{ border: "none", width: "17%" }}/>
-          </tr>
-        </tbody></table>
+    <!-- Info block -->
+    <table style="width:100%;margin-bottom:5px">
+      <colgroup>
+        <col style="width:11%"><col style="width:32%"><col style="width:3%"><col style="width:18%">
+        <col style="width:3%"><col style="width:3%"><col style="width:18%"><col style="width:12%">
+      </colgroup>
+      <tbody>${infoRows}</tbody>
+    </table>
 
-        <div style={{ height: 8 }}/>
+    <!-- Process table — full machine names, no QC check rows -->
+    <table style="width:100%;margin-bottom:8px">
+      <colgroup>
+        <col style="width:5%"><col style="width:30%"><col style="width:13%"><col style="width:2%">
+        <col style="width:5%"><col style="width:30%"><col style="width:13%"><col style="width:2%">
+      </colgroup>
+      <thead>
+        <tr>
+          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">SL NO</td>
+          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">Process Name</td>
+          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">Machine</td>
+          <td style="border:none"></td>
+          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">SL NO</td>
+          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">Process Name</td>
+          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">Machine</td>
+          <td style="border:none"></td>
+        </tr>
+      </thead>
+      <tbody>${processRows}</tbody>
+    </table>
 
-        {/* Machine summary */}
-        <table style={{ width: "30%", borderCollapse: "collapse" }}><tbody>
-          <tr>
-            <td style={tdStyle({ fontWeight: "bold", textAlign: "center", background: "#FFFF00" })}>Machine</td>
-            <td style={tdStyle({ fontWeight: "bold", textAlign: "center", background: "#FFFF00" })}>Qty</td>
-          </tr>
-          {Object.entries(machSummary).map(([m, q]) => (
-            <tr key={m} style={{ height: 16 }}>
-              <td style={tdStyle()}>{m}</td>
-              <td style={tdStyle({ textAlign: "center" })}>{q}</td>
-            </tr>
-          ))}
-          <tr style={{ height: 16 }}>
-            <td style={tdStyle({ fontWeight: "bold" })}>Total</td>
-            <td style={tdStyle({ fontWeight: "bold", textAlign: "center" })}>
-              {Object.values(machSummary).reduce((a, b) => a + b, 0)}
-            </td>
-          </tr>
-        </tbody></table>
+    <!-- Machine summary — full names, no HELPER -->
+    <table style="width:45%;margin-bottom:18px">
+      <tr>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">Machine Name</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px;width:20%">Qty</td>
+      </tr>
+      ${machRows}
+      <tr style="height:16px">
+        <td style="border:1px solid #000;font-weight:bold;padding:1px 3px">Total</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 3px">${machTotal}</td>
+      </tr>
+    </table>
 
-        <div style={{ height: 18 }}/>
+    <!-- Signature row -->
+    <table style="width:100%">
+      <colgroup><col style="width:25%"><col style="width:25%"><col style="width:25%"><col style="width:25%"></colgroup>
+      <tr style="height:38px">
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px">Sr. Supervisor</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px">Technician</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px">IE Executive</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px">Maintenance Supervisor</td>
+      </tr>
+    </table>
 
-        {/* Signature row */}
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <colgroup>
-            <col style={{ width: "25%" }}/><col style={{ width: "25%" }}/>
-            <col style={{ width: "25%" }}/><col style={{ width: "25%" }}/>
-          </colgroup>
-          <tbody>
-            <tr style={{ height: 38 }}>
-              {["Sr. sup", "Technician", "IE Exe", "Mnt. Sup"].map(role => (
-                <td key={role} style={tdStyle({ fontWeight: "bold", textAlign: "center", verticalAlign: "bottom", padding: "2px 4px" })}>
-                  {role}
-                </td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+  </div>
+</body>
+</html>`;
 
-  // ── Portal: renders directly into document.body, escaping the scale wrapper ──
-  return ReactDOM.createPortal(content, document.body);
+  // Remove any previous print iframe
+  const old = document.getElementById("ll-print-iframe");
+  if (old) old.remove();
+
+  // Create hidden iframe appended directly to body (outside any React/scale wrapper)
+  const iframe = document.createElement("iframe");
+  iframe.id = "ll-print-iframe";
+  iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;";
+  document.body.appendChild(iframe);
+
+  const iDoc = iframe.contentDocument || iframe.contentWindow.document;
+  iDoc.open();
+  iDoc.write(html);
+  iDoc.close();
+
+  // Small delay lets the browser finish rendering the iframe content before printing
+  setTimeout(() => {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch(e) {
+      console.error("iframe print failed:", e);
+    }
+    // Remove iframe 10s after print dialog opens
+    setTimeout(() => { iframe.remove(); }, 10000);
+  }, 500);
 }
 
 // ─── SearchableSelect ─────────────────────────────────────────────────────────
@@ -824,8 +751,6 @@ export default function LineLayoutPage() {
   const [listLoading, setListLoading] = useState(false);
   const [currentLayout, setCurrentLayout] = useState(null);
 
-  const [printOpen, setPrintOpen] = useState(false);
-
   const [form, setForm] = useState({
     floor:"", lineNo:"", buyer:"", style:"", item:"",
     smv:"", planEfficiency:"", operator:"", helper:"",
@@ -1177,7 +1102,7 @@ export default function LineLayoutPage() {
               </button>
             )}
             {view === "builder" && currentLayout && (
-              <button onClick={() => setPrintOpen(true)}
+              <button onClick={() => openPrintWindow(currentLayout)}
                 className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-base transition-all shadow-sm flex items-center gap-2">
                 🖨 Print Layout
               </button>
@@ -1545,15 +1470,10 @@ export default function LineLayoutPage() {
         )}
       </div>
 
-      {/* ── PrintLayout portal — rendered OUTSIDE the scale wrapper, directly on body ── */}
-      {printOpen && currentLayout && (
-        <PrintLayout layout={currentLayout} onClose={() => setPrintOpen(false)} />
-      )}
+
     </div>
   );
 }
-
-// ─── Field / Input / Select helpers ──────────────────────────────────────────
 function LField({ label, children }) {
   return (
     <div>
