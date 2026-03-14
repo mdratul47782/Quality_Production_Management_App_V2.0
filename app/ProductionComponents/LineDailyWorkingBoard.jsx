@@ -1,6 +1,11 @@
 // app/ProductionComponents/LineDailyWorkingBoard.jsx
-// CHANGE: buildWipParams() no longer passes color_model.
-// Uptodate production is now buyer + style level (all colors combined).
+//
+// FIX: cycleStartDate (from /api/style-wip) is now threaded through to
+//      /api/style-capacities GET and POST calls.
+//      This ensures every cycle of the same buyer+style gets its OWN
+//      capacity document, so updating Total Input in a new cycle never
+//      touches the previous cycle's stored value.
+//
 "use client";
 
 import { useEffect, useState } from "react";
@@ -39,14 +44,14 @@ export default function HourlyProductionBoard({
   const [internalLine, setInternalLine] = useState("");
   const [internalDate, setInternalDate] = useState(todayIso());
 
-  const selectedLine    = propLine     !== undefined ? propLine     : internalLine;
-  const selectedDate    = propDate     !== undefined ? propDate     : internalDate;
-  const setSelectedLine = propSetLine  ?? setInternalLine;
-  const setSelectedDate = propSetDate  ?? setInternalDate;
+  const selectedLine    = propLine    !== undefined ? propLine    : internalLine;
+  const selectedDate    = propDate    !== undefined ? propDate    : internalDate;
+  const setSelectedLine = propSetLine ?? setInternalLine;
+  const setSelectedDate = propSetDate ?? setInternalDate;
 
-  const [headers, setHeaders] = useState([]);
+  const [headers, setHeaders]               = useState([]);
   const [loadingHeaders, setLoadingHeaders] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError]                   = useState("");
 
   const assignedBuilding =
     auth?.assigned_building || auth?.user?.assigned_building || "";
@@ -79,7 +84,7 @@ export default function HourlyProductionBoard({
         });
         if (factory) params.set("factory", factory);
 
-        const res = await fetch(`/api/target-setter-header?${params.toString()}`, {
+        const res  = await fetch(`/api/target-setter-header?${params.toString()}`, {
           cache: "no-store",
           signal: controller.signal,
         });
@@ -252,24 +257,30 @@ export default function HourlyProductionBoard({
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// HourlyHeaderCard
+// ─────────────────────────────────────────────────────────────────────────────
 function HourlyHeaderCard({ header, auth }) {
-  const [selectedHour, setSelectedHour] = useState(1);
-  const [achievedInput, setAchievedInput] = useState("");
-  const [hourlyRecords, setHourlyRecords] = useState([]);
-  const [loadingRecords, setLoadingRecords] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [selectedHour, setSelectedHour]       = useState(1);
+  const [achievedInput, setAchievedInput]     = useState("");
+  const [hourlyRecords, setHourlyRecords]     = useState([]);
+  const [loadingRecords, setLoadingRecords]   = useState(false);
+  const [saving, setSaving]                   = useState(false);
   const [editingRecordId, setEditingRecordId] = useState(null);
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [error, setError]                     = useState("");
+  const [message, setMessage]                 = useState("");
 
-  const [totalInput, setTotalInput] = useState("");
-  const [totalInputSaving, setTotalInputSaving] = useState(false);
+  const [totalInput, setTotalInput]               = useState("");
+  const [totalInputSaving, setTotalInputSaving]   = useState(false);
   const [totalInputLoading, setTotalInputLoading] = useState(false);
-  const [wipInfo, setWipInfo] = useState(null);
-  const [wipLoading, setWipLoading] = useState(false);
+  const [wipInfo, setWipInfo]                     = useState(null);
+  const [wipLoading, setWipLoading]               = useState(false);
 
-  const [dayInput, setDayInput] = useState("");
+  const [dayInput, setDayInput]             = useState("");
   const [dayInputSaving, setDayInputSaving] = useState(false);
+
+  // ✅ FIX: store the cycleStartDate returned from /api/style-wip
+  const [cycleStartDate, setCycleStartDate] = useState(null);
 
   const productionUserId =
     auth?.user?.id || auth?.user?._id || auth?.id || auth?._id || "";
@@ -282,7 +293,7 @@ function HourlyHeaderCard({ header, auth }) {
     auth?.user?.assigned_factory ||
     "";
 
-  // ✅ color_model intentionally excluded — uptodate is buyer+style level
+  // color_model intentionally excluded — uptodate is buyer+style level
   const buildWipParams = () => {
     return new URLSearchParams({
       factory,
@@ -291,28 +302,31 @@ function HourlyHeaderCard({ header, auth }) {
       buyer: header.buyer,
       style: header.style,
       date:  header.date,
-      // color_model NOT passed — all colors count together
     });
   };
 
+  // ✅ FIX: refreshWip now also updates cycleStartDate
   const refreshWip = async () => {
     if (!header || !factory) return;
     setWipLoading(true);
     try {
-      const res = await fetch(
+      const res  = await fetch(
         `/api/style-wip?${buildWipParams().toString()}`,
         { cache: "no-store" }
       );
       const json = await res.json();
       if (res.ok && json.success) {
         setWipInfo(json.data);
+        setCycleStartDate(json.data?.cycleStartDate || null); // ✅ NEW
       } else {
         console.warn("refreshWip failed:", json.message);
         setWipInfo(null);
+        setCycleStartDate(null);
       }
     } catch (err) {
       console.error("refreshWip error:", err);
       setWipInfo(null);
+      setCycleStartDate(null);
     } finally {
       setWipLoading(false);
     }
@@ -327,6 +341,7 @@ function HourlyHeaderCard({ header, auth }) {
     setMessage("");
     setTotalInput("");
     setWipInfo(null);
+    setCycleStartDate(null); // ✅ reset on header change
     setDayInput("");
   }, [header?._id]);
 
@@ -342,7 +357,7 @@ function HourlyHeaderCard({ header, auth }) {
           headerId: header._id,
           productionUserId,
         });
-        const res = await fetch(
+        const res  = await fetch(
           `/api/hourly-productions?${params.toString()}`,
           { cache: "no-store", signal: controller.signal }
         );
@@ -372,15 +387,40 @@ function HourlyHeaderCard({ header, auth }) {
         setTotalInputLoading(true);
         setWipLoading(true);
 
-        const baseParams = new URLSearchParams({
-          assigned_building: header.assigned_building,
-          line:  header.line,
-          buyer: header.buyer,
-          style: header.style,
-        });
-        if (factory) baseParams.set("factory", factory);
-
+        // ── Step 1: fetch WIP (also gives us cycleStartDate) ──────────────
+        let detectedCycleStartDate = null;
         try {
+          if (factory) {
+            const resWip = await fetch(
+              `/api/style-wip?${buildWipParams().toString()}`,
+              { cache: "no-store", signal: controller.signal }
+            );
+            if (resWip.ok) {
+              const jsonWip = await resWip.json();
+              if (jsonWip.success) {
+                setWipInfo(jsonWip.data);
+                detectedCycleStartDate = jsonWip.data?.cycleStartDate || null;
+                setCycleStartDate(detectedCycleStartDate); // ✅ NEW
+              }
+            }
+          }
+        } catch (err) {
+          if (err.name !== "AbortError") console.error(err);
+        }
+
+        // ── Step 2: fetch capacity scoped to THIS cycle ────────────────────
+        // ✅ FIX: include cycleStartDate so we load only this cycle's doc.
+        try {
+          const baseParams = new URLSearchParams({
+            assigned_building: header.assigned_building,
+            line:  header.line,
+            buyer: header.buyer,
+            style: header.style,
+          });
+          if (factory) baseParams.set("factory", factory);
+          if (detectedCycleStartDate)
+            baseParams.set("cycleStartDate", detectedCycleStartDate); // ✅ NEW
+
           const resCap = await fetch(
             `/api/style-capacities?${baseParams.toString()}`,
             { cache: "no-store", signal: controller.signal }
@@ -390,21 +430,6 @@ function HourlyHeaderCard({ header, auth }) {
             if (jsonCap.success) {
               const doc = jsonCap.data?.[0] || null;
               setTotalInput(doc?.capacity != null ? String(doc.capacity) : "");
-            }
-          }
-        } catch (err) {
-          if (err.name !== "AbortError") console.error(err);
-        }
-
-        try {
-          if (factory) {
-            const resWip = await fetch(
-              `/api/style-wip?${buildWipParams().toString()}`,
-              { cache: "no-store", signal: controller.signal }
-            );
-            if (resWip.ok) {
-              const jsonWip = await resWip.json();
-              if (jsonWip.success) setWipInfo(jsonWip.data);
             }
           }
         } catch (err) {
@@ -423,7 +448,6 @@ function HourlyHeaderCard({ header, auth }) {
     header?.line,
     header?.buyer,
     header?.style,
-    // ✅ color_model removed from deps — no per-color re-fetch needed
     header?.date,
     header,
     factory,
@@ -541,6 +565,9 @@ function HourlyHeaderCard({ header, auth }) {
         (manpowerPresent * 60 * selectedHourInt)
       : 0;
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Handlers
+  // ─────────────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     try {
       setError(""); setMessage("");
@@ -625,11 +652,16 @@ function HourlyHeaderCard({ header, auth }) {
     setMessage(`Editing last saved hour (${latestRecord._hourNum}).`);
   };
 
+  // ✅ FIX: pass cycleStartDate in the payload so the API upserts on the
+  //         correct cycle-scoped document.
   const handleTotalInputSave = async () => {
     try {
       setError(""); setMessage("");
       if (!auth)    throw new Error("User not authenticated");
       if (!factory) throw new Error("Factory not set.");
+      if (!cycleStartDate) throw new Error(
+        "Cycle start date not detected yet. Please wait for WIP data to load."
+      );
       const capNum = Number(totalInput);
       if (!Number.isFinite(capNum) || capNum < 0)
         throw new Error("Total input must be a non-negative number.");
@@ -641,11 +673,12 @@ function HourlyHeaderCard({ header, auth }) {
       const payload = {
         factory,
         assigned_building: header.assigned_building,
-        line:  header.line,
-        buyer: header.buyer,
-        style: header.style,
-        date:  header.date,
-        capacity: capNum,
+        line:           header.line,
+        buyer:          header.buyer,
+        style:          header.style,
+        cycleStartDate,               // ✅ NEW — cycle-scoped key
+        date:           header.date,
+        capacity:       capNum,
         user: {
           id:        userId,
           user_name: auth?.user?.user_name || auth?.user_name || "Unknown",
@@ -677,11 +710,15 @@ function HourlyHeaderCard({ header, auth }) {
     }
   };
 
+  // ✅ FIX: same cycleStartDate guard for day input
   const handleDayInputSave = async () => {
     try {
       setError(""); setMessage("");
       if (!auth)    throw new Error("User not authenticated");
       if (!factory) throw new Error("Factory not set.");
+      if (!cycleStartDate) throw new Error(
+        "Cycle start date not detected yet. Please wait for WIP data to load."
+      );
       const addQty = Number(dayInput);
       if (!Number.isFinite(addQty) || addQty <= 0)
         throw new Error("Day input must be a positive number.");
@@ -694,11 +731,12 @@ function HourlyHeaderCard({ header, auth }) {
       const payload = {
         factory,
         assigned_building: header.assigned_building,
-        line:  header.line,
-        buyer: header.buyer,
-        style: header.style,
-        date:  header.date,
-        capacity: newTotal,
+        line:           header.line,
+        buyer:          header.buyer,
+        style:          header.style,
+        cycleStartDate,               // ✅ NEW — cycle-scoped key
+        date:           header.date,
+        capacity:       newTotal,
         user: {
           id:        userId,
           user_name: auth?.user?.user_name || auth?.user_name || "Unknown",
@@ -733,6 +771,9 @@ function HourlyHeaderCard({ header, auth }) {
     }
   };
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="card bg-base-100 border border-base-200 shadow-sm">
       <div className="card-body w-full p-3 space-y-3">
@@ -760,6 +801,12 @@ function HourlyHeaderCard({ header, auth }) {
               <span className="font-semibold">Working hour:</span> {header.working_hour}h
               <span className="font-semibold"> • Item:</span> {header.Item}
             </div>
+            {/* ✅ Show detected cycle start date for transparency */}
+            {cycleStartDate && (
+              <div className="text-[11px] text-slate-500">
+                <span className="font-semibold">Cycle start:</span> {cycleStartDate}
+              </div>
+            )}
           </div>
           <div className="text-[13px] text-right text-slate-1000 space-y-0.5">
             <div><span className="font-semibold">Present MP:</span> {manpowerPresent}</div>
@@ -926,10 +973,16 @@ function HourlyHeaderCard({ header, auth }) {
               type="button"
               onClick={handleTotalInputSave}
               className="btn btn-xs btn-primary"
-              disabled={totalInputSaving || wipLoading}
+              disabled={totalInputSaving || wipLoading || !cycleStartDate}
             >
               {totalInputSaving ? "Saving..." : "Save / Update"}
             </button>
+            {/* ✅ Show a subtle warning if cycle not yet known */}
+            {!cycleStartDate && !wipLoading && (
+              <span className="text-[10px] text-amber-600">
+                Waiting for cycle detection…
+              </span>
+            )}
           </div>
 
           <div className="border-t border-dashed border-slate-300" />
@@ -949,7 +1002,7 @@ function HourlyHeaderCard({ header, auth }) {
               type="button"
               onClick={handleDayInputSave}
               className="btn btn-xs btn-success text-white"
-              disabled={dayInputSaving || !dayInput}
+              disabled={dayInputSaving || !dayInput || !cycleStartDate}
             >
               {dayInputSaving ? "Adding..." : "+ Add to Total"}
             </button>

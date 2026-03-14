@@ -1,4 +1,8 @@
 // app/api/style-capacities/[id]/route.js
+//
+// No structural changes needed here — GET/PATCH/DELETE by MongoDB _id still works.
+// cycleStartDate is stored on the document and returned in responses.
+//
 import { dbConnect } from "@/services/mongo";
 import { StyleCapacityModel } from "@/models/StyleCapacity-model";
 
@@ -52,7 +56,7 @@ export async function PATCH(request, { params = {} } = {}) {
       );
     }
 
-    const body = await request.json();
+    const body   = await request.json();
     const update = {};
     const errors = [];
 
@@ -65,15 +69,14 @@ export async function PATCH(request, { params = {} } = {}) {
       }
     }
 
-    if ("date" in body) {
-      update.date = body.date;
-    }
+    if ("date" in body)           update.date           = body.date;
+    if ("cycleStartDate" in body) update.cycleStartDate = body.cycleStartDate;
 
     if (body.user) {
       update.user = {
-        id: body.user.id,
+        id:        body.user.id,
         user_name: body.user.user_name,
-        role: body.user.role,
+        role:      body.user.role,
       };
     }
 
@@ -133,10 +136,7 @@ export async function DELETE(_request, { params = {} } = {}) {
     }
 
     return Response.json(
-      {
-        success: true,
-        message: "Style capacity deleted successfully",
-      },
+      { success: true, message: "Style capacity deleted successfully" },
       { status: 200 }
     );
   } catch (error) {

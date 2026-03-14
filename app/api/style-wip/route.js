@@ -1,18 +1,22 @@
 // app/api/style-wip/route.js
 //
-// CYCLE DETECTION LOGIC:
+// FIX: StyleCapacityModel lookup now includes cycleStartDate so the correct
+//      cycle's capacity is used. Previously it matched only on
+//      factory+building+line+buyer+style, which always returned the FIRST
+//      cycle's document even after a new cycle started.
 //
-// Uptodate production = sum of achievedQty for the CURRENT UNBROKEN STREAK
-// of dates on which this line ran the SAME buyer + style combo —
-// regardless of color_model. All colors of the same style count together.
+// CYCLE DETECTION LOGIC (unchanged):
+//   Uptodate production = sum of achievedQty for the CURRENT UNBROKEN STREAK
+//   of dates on which this line ran the SAME buyer + style combo —
+//   regardless of color_model. All colors of the same style count together.
 //
-// Example on Line-1:
-//   Jan-01: style-123, buyer-X, color-BLUE  ← cycle starts
-//   Jan-02: style-123, buyer-X, color-RED   ← still same cycle (same buyer+style)
-//   Jan-03: style-456, buyer-Y, color-GREEN ← different style → streak broken
-//   Jan-04: style-123, buyer-X, color-BLUE  ← brand NEW streak (not Jan-01/02)
+//   Example on Line-1:
+//     Jan-01: style-123, buyer-X, color-BLUE  ← cycle starts
+//     Jan-02: style-123, buyer-X, color-RED   ← still same cycle (same buyer+style)
+//     Jan-03: style-456, buyer-Y, color-GREEN ← different style → streak broken
+//     Jan-04: style-123, buyer-X, color-BLUE  ← brand NEW streak (not Jan-01/02)
 //
-// color_model param is intentionally IGNORED for streak detection and aggregation.
+//   color_model param is intentionally IGNORED for streak detection and aggregation.
 
 import { dbConnect } from "@/services/mongo";
 import TargetSetterHeader from "@/models/TargetSetterHeader";
@@ -61,15 +65,7 @@ export async function GET(request) {
     const date = toDateString(dateParam);
 
     // ─────────────────────────────────────────────────────────────────────────
-    // STEP 1 — Capacity doc (buyer + style level, color-agnostic)
-    // ─────────────────────────────────────────────────────────────────────────
-    const capacityDoc = await StyleCapacityModel.findOne({
-      factory, assigned_building, line, buyer, style,
-    }).lean();
-    const capacity = capacityDoc ? toNumberOrZero(capacityDoc.capacity) : 0;
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // STEP 2 — Fetch ALL headers for this factory + building + line up to `date`
+    // STEP 1 — Fetch ALL headers for this factory + building + line up to `date`
     //          We need the full line timeline to detect streak breaks.
     // ─────────────────────────────────────────────────────────────────────────
     const allHeadersRaw = await TargetSetterHeader.find({
@@ -89,9 +85,12 @@ export async function GET(request) {
       return Response.json({
         success: true,
         data: {
-          factory, capacity,
-          totalAchieved: 0, wip: capacity, rawWip: capacity,
-          capacityId: capacityDoc?._id || null,
+          factory,
+          capacity: 0,
+          totalAchieved: 0,
+          wip: 0,
+          rawWip: 0,
+          capacityId: null,
           cycleStartDate: null,
           debug: { reason: "no headers for this line up to date" },
         },
@@ -99,7 +98,7 @@ export async function GET(request) {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
-    // STEP 3 — Group headers by date, then walk backwards to find the
+    // STEP 2 — Group headers by date, then walk backwards to find the
     //          unbroken streak for this buyer + style (all colors together).
     //
     // Rules:
@@ -142,9 +141,12 @@ export async function GET(request) {
       return Response.json({
         success: true,
         data: {
-          factory, capacity,
-          totalAchieved: 0, wip: capacity, rawWip: capacity,
-          capacityId: capacityDoc?._id || null,
+          factory,
+          capacity: 0,
+          totalAchieved: 0,
+          wip: 0,
+          rawWip: 0,
+          capacityId: null,
           cycleStartDate: null,
           debug: {
             reason: "buyer+style combo not present in most-recent production days",
@@ -153,6 +155,24 @@ export async function GET(request) {
         },
       }, { status: 200 });
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // STEP 3 — Capacity doc scoped to THIS cycle via cycleStartDate.
+    //
+    // FIX: Previously this looked up only by factory+building+line+buyer+style,
+    //      which always matched the OLDEST capacity doc. Now we scope it to the
+    //      detected cycleStartDate so each cycle reads its own document.
+    // ─────────────────────────────────────────────────────────────────────────
+    const capacityDoc = await StyleCapacityModel.findOne({
+      factory,
+      assigned_building,
+      line,
+      buyer,
+      style,
+      cycleStartDate, // ✅ FIX — scope to current cycle only
+    }).lean();
+
+    const capacity = capacityDoc ? toNumberOrZero(capacityDoc.capacity) : 0;
 
     // ─────────────────────────────────────────────────────────────────────────
     // STEP 4 — Sum achievedQty from ALL streak headers (all colors combined)
@@ -175,11 +195,11 @@ export async function GET(request) {
         wip,
         rawWip,
         capacityId:       capacityDoc?._id || null,
-        cycleStartDate,
+        cycleStartDate,                          // ✅ always returned
         cycleHeaderCount: streakHeaderIds.length,
         debug: {
           date, buyer, style,
-          note: "color_model ignored — uptodate is buyer+style level",
+          note: "color_model ignored — uptodate is buyer+style level; capacity scoped to cycleStartDate",
           cycleStartDate,
           streakHeaderCount: streakHeaderIds.length,
           totalLineDates:    datesWithHeaders.length,
