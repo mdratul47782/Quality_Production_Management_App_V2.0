@@ -1082,8 +1082,8 @@ export default function LineLayoutPage() {
   return (
     <div className="w-screen h-screen overflow-hidden bg-slate-100">
       <div style={{
-        transform: "scale(0.67)", transformOrigin: "top left",
-        width: "149.25vw", height: "149.25vh",
+        transform: "scale(0.75)", transformOrigin: "top left",
+        width: "127.33vw", height: "133.33vh",
         display: "flex", flexDirection: "column", overflow: "hidden",
       }} className="font-sans text-slate-800">
 
@@ -1406,8 +1406,8 @@ export default function LineLayoutPage() {
 
         {/* FORM VIEW */}
         {view === "form" && (
-          <div className="flex-1 overflow-y-auto p-6 flex justify-center bg-slate-50">
-            <form onSubmit={handleCreateLayout} className="w-full max-w-2xl">
+          <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center justify-start bg-slate-50">
+            <form onSubmit={handleCreateLayout} className="w-full max-w-xl">
               <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div className="h-1.5 bg-gradient-to-r from-blue-600 via-blue-400 to-violet-500" />
                 <div className="p-8 space-y-5">
