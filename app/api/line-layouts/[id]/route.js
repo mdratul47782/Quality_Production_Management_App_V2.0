@@ -5,10 +5,6 @@ import { lineLayoutModel } from "@/models/lineLayout-model";
 import { machineModel }    from "@/models/machine-model";
 
 // ── Helper: mark machine units Running / Idle in inventory ────────────────────
-// floorOverride: when provided, also moves the unit's floorName to that floor.
-//   • For "Running" → pass the layout's floor so A4 machine shows as Running on A2
-//   • For "Idle" (waste) → pass the wasteFloor so it shows Idle on the waste floor
-//   • For "Idle" (delete/no floor change) → pass null to keep machine on its current floor
 async function updateMachineStatuses(entries, newStatus, floorOverride = null) {
   if (!entries || entries.length === 0) return;
   for (const entry of entries) {
@@ -31,9 +27,7 @@ async function updateMachineStatuses(entries, newStatus, floorOverride = null) {
   }
 }
 
-// FIX: correct formula — manpower = operator + helper + seamSealing
-// dailyTarget = (manpower × hours × 60 / smv) × (eff/100)
-// oneHourTarget = dailyTarget / hours
+// Correct formula — manpower = operator + helper + seamSealing
 function calcTargets(smv, planEfficiency, operator, helper, seamSealing, workingHours) {
   const manpower = (parseInt(operator) || 0) + (parseInt(helper) || 0) + (parseInt(seamSealing) || 0);
   const e = (parseFloat(planEfficiency) || 0) / 100;
@@ -52,7 +46,7 @@ export async function GET(request, { params }) {
     const { id } = await params;
     const layout = await lineLayoutModel.findById(id).lean();
     if (!layout)
-      return NextResponse.json({ success: false, message: "Layout পাওয়া যায়নি।" }, { status: 404 });
+      return NextResponse.json({ success: false, message: "Layout not found." }, { status: 404 });
     return NextResponse.json({ success: true, data: layout });
   } catch (err) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
@@ -60,27 +54,45 @@ export async function GET(request, { params }) {
 }
 
 // ── DELETE /api/line-layouts/[id] ─────────────────────────────────────────────
+// Body: { machineReturns: [{ machineId, serialNumber, returnFloor }] }
+//   Each entry specifies which floor that serial goes back to as Idle.
+//   Falls back to each machine's fromFloor if machineReturns is absent.
 export async function DELETE(request, { params }) {
   try {
     await dbConnect();
     const { id } = await params;
     const layout = await lineLayoutModel.findById(id);
     if (!layout)
-      return NextResponse.json({ success: false, message: "Layout পাওয়া যায়নি।" }, { status: 404 });
+      return NextResponse.json({ success: false, message: "Layout not found." }, { status: 404 });
 
+    // Parse body — gracefully handle missing/empty body
+    let machineReturns = [];
+    try {
+      const body = await request.json();
+      machineReturns = body?.machineReturns || [];
+    } catch { /* no body is fine */ }
+
+    // Build lookup: serialNumber → returnFloor
+    const floorMap = {};
+    for (const entry of machineReturns) {
+      if (entry.serialNumber) floorMap[entry.serialNumber] = entry.returnFloor || null;
+    }
+
+    // Return every assigned machine unit to Idle on its chosen floor
     for (const proc of layout.processes || []) {
-      // FIX: restore each machine to its original floor (fromFloor) when layout is deleted
       for (const m of (proc.machines || [])) {
+        if (!m.serialNumber) continue;
+        const returnFloor = floorMap[m.serialNumber] ?? m.fromFloor ?? null;
         await updateMachineStatuses(
           [{ machineId: m.machineId, serialNumber: m.serialNumber }],
           "Idle",
-          m.fromFloor || null
+          returnFloor
         );
       }
     }
 
     await lineLayoutModel.findByIdAndDelete(id);
-    return NextResponse.json({ success: true, message: "Layout মুছে ফেলা হয়েছে।" });
+    return NextResponse.json({ success: true, message: "Layout deleted." });
   } catch (err) {
     return NextResponse.json({ success: false, message: err.message }, { status: 500 });
   }
@@ -94,15 +106,13 @@ export async function PATCH(request, { params }) {
     const body   = await request.json();
     const layout = await lineLayoutModel.findById(id);
     if (!layout)
-      return NextResponse.json({ success: false, message: "Layout পাওয়া যায়নি।" }, { status: 404 });
+      return NextResponse.json({ success: false, message: "Layout not found." }, { status: 404 });
 
     // ── ACTION: add_process ──────────────────────────────────────────────────
     if (body.action === "add_process") {
       const { serialNo, processName, machineType, machinesSelected } = body;
 
       if (machinesSelected && machinesSelected.length > 0) {
-        // FIX: pass layout.floor so floorName moves to the layout floor (e.g. A2),
-        // not stays on the source floor (e.g. A4). Inventory shows Running on A2 correctly.
         await updateMachineStatuses(
           machinesSelected.map((m) => ({
             machineId:    m.machineId,
@@ -159,10 +169,9 @@ export async function PATCH(request, { params }) {
 
       const procIdx = layout.processes.findIndex((p) => String(p._id) === processId);
       if (procIdx < 0)
-        return NextResponse.json({ success: false, message: "Process পাওয়া যায়নি।" }, { status: 404 });
+        return NextResponse.json({ success: false, message: "Process not found." }, { status: 404 });
 
       if (machineChanged) {
-        // FIX: restore each old machine to its original fromFloor, not leave on layout floor
         for (const m of (oldMachines || [])) {
           await updateMachineStatuses(
             [{ machineId: m.machineId, serialNumber: m.serialNumber }],
@@ -171,7 +180,6 @@ export async function PATCH(request, { params }) {
           );
         }
         if (newMachines && newMachines.length > 0) {
-          // FIX: same as add_process — move floorName to layout floor when Running
           await updateMachineStatuses(
             newMachines.map((m) => ({
               machineId:    m.machineId,
@@ -198,17 +206,15 @@ export async function PATCH(request, { params }) {
     }
 
     // ── ACTION: update_header ────────────────────────────────────────────────
-    // FIX: use correct formula, accept sketchUrl for image updates
     if (body.action === "update_header") {
       const {
         buyer, style, item,
         smv, planEfficiency,
         operator, helper, seamSealing,
         workingHours,
-        sketchUrl,   // ← NEW: optional image url from upload
+        sketchUrl,
       } = body;
 
-      // FIX: use the corrected calcTargets (manpower includes helper + seamSealing)
       const { manpower, oneHourTarget, dailyTarget } = calcTargets(
         smv, planEfficiency, operator, helper, seamSealing, workingHours
       );
@@ -226,7 +232,6 @@ export async function PATCH(request, { params }) {
         manpower,
         oneHourTarget,
         dailyTarget,
-        // Only update sketchUrl if a value was passed (empty string clears it, undefined keeps old)
         ...(sketchUrl !== undefined ? { sketchUrl } : {}),
       });
 

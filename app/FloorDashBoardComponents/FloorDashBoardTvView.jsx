@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Gauge, TrendingUp, Activity, AlertTriangle } from "lucide-react";
+import { Gauge, TrendingUp, Activity, AlertTriangle, TrendingDown, Minus } from "lucide-react";
 import { useAuth } from "@/app/hooks/useAuth";
 
 import {
@@ -70,7 +70,6 @@ export default function FloorDashBoardTvView() {
     return () => clearInterval(id);
   }, []);
 
-  // dashboard
   useEffect(() => {
     if (!factory || !building || !date) return;
     const controller = new AbortController();
@@ -93,7 +92,6 @@ export default function FloorDashBoardTvView() {
     return () => controller.abort();
   }, [factory, building, date, line, refreshTick]);
 
-  // headers
   useEffect(() => {
     if (!factory || !building || !date) return;
     let cancelled = false;
@@ -117,7 +115,6 @@ export default function FloorDashBoardTvView() {
     return () => { cancelled = true; };
   }, [factory, building, date, line, headerTick]);
 
-  // style media
   useEffect(() => {
     if (!factory || !building || !date) return;
     let cancelled = false;
@@ -159,28 +156,17 @@ export default function FloorDashBoardTvView() {
   const safeIndex  = sortedRows.length > 0 ? currentCardIndex % sortedRows.length : 0;
   const currentRow = sortedRows[safeIndex];
 
-  // fetch WIP for current visible segment
   useEffect(() => {
     if (!factory || !building || !date || !currentRow) { setCurrentWip(null); return; }
-
     const segKey = makeSegmentKey(currentRow.line, currentRow.buyer, currentRow.style);
     const header = headerMap[segKey];
     const buyer  = header?.buyer || currentRow.buyer || "";
     const style  = header?.style || currentRow.style || "";
-
     if (!currentRow.line || !buyer || !style) { setCurrentWip(null); return; }
-
     const controller = new AbortController();
     const fetchWip = async () => {
       try {
-        const params = new URLSearchParams({
-          factory,
-          assigned_building: building,
-          line:  currentRow.line,
-          buyer,
-          style,
-          date,
-        });
+        const params = new URLSearchParams({ factory, assigned_building: building, line: currentRow.line, buyer, style, date });
         const res  = await fetch(`/api/style-wip?${params.toString()}`, { cache: "no-store", signal: controller.signal });
         const json = await res.json();
         if (res.ok && json.success) setCurrentWip(json.data || null);
@@ -240,7 +226,34 @@ export default function FloorDashBoardTvView() {
         {/* CONTENT */}
         <div className="flex-1 min-h-0 overflow-hidden">
           {!hasData && !loading && !error && (
-            <p className="text-[11px] text-slate-500">No data for this factory/building/date yet.</p>
+            <div className="w-full h-full rounded-3xl border-2 border-slate-700/60 bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 shadow-[0_0_80px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col min-h-[380px] sm:min-h-[420px] lg:min-h-[460px]">
+              {/* top meta skeleton */}
+              <div className="border-b border-slate-800/70 px-4 py-3 flex items-center justify-between">
+                <div className="flex flex-wrap gap-1.5">
+                  {["Buyer","Style","Run Day","SMV","Man Power","Color/Model","Item"].map((lbl) => (
+                    <span key={lbl} className="badge badge-lg border-slate-700/60 bg-slate-800/40 text-slate-600">{lbl}:&nbsp;<span className="text-slate-700">—</span></span>
+                  ))}
+                </div>
+                <div className="text-right">
+                  <div className="text-[11px] uppercase tracking-wide text-slate-600">Line</div>
+                  <div className="text-3xl font-semibold text-slate-700">—</div>
+                </div>
+              </div>
+              {/* centre message */}
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 px-6">
+                <div className="w-14 h-14 rounded-2xl border-2 border-dashed border-slate-700 flex items-center justify-center">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-slate-600">
+                    <path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 0 10h-2"/><line x1="8" y1="12" x2="16" y2="12"/>
+                  </svg>
+                </div>
+                <p className="text-base font-black text-slate-500 uppercase tracking-widest">No Data Entered</p>
+                <p className="text-[11px] text-slate-600 text-center">No production data found for<br/><span className="text-slate-500 font-semibold">{factory} · {building} · {date}</span></p>
+              </div>
+              {/* bottom skeleton bar */}
+              <div className="border-t border-slate-800/50 px-4 py-2 flex items-center justify-center gap-1">
+                {[...Array(5)].map((_,i) => <div key={i} className="h-1.5 w-1.5 rounded-full bg-slate-800" />)}
+              </div>
+            </div>
           )}
           {hasData && currentRow && (
             <div className="flex-1 min-h-0 flex flex-col space-y-2">
@@ -303,6 +316,49 @@ export default function FloorDashBoardTvView() {
 }
 
 /* ══════════════════════════════════════════════════════════
+   MODERN STAT CARD — replaces TvStatBox in the Plan section
+══════════════════════════════════════════════════════════ */
+function PlanStatCard({ label, value, sub, tone = "default", icon: Icon, trend }) {
+  const tones = {
+    sky:     { border: "border-sky-500/40",     bg: "bg-sky-500/8",     label: "text-sky-400",     val: "text-sky-100",     glow: "shadow-[0_0_12px_rgba(56,189,248,0.15)]",    dot: "bg-sky-400"     },
+    emerald: { border: "border-emerald-500/40", bg: "bg-emerald-500/8", label: "text-emerald-400", val: "text-emerald-100", glow: "shadow-[0_0_12px_rgba(52,211,153,0.15)]",    dot: "bg-emerald-400" },
+    rose:    { border: "border-rose-500/40",    bg: "bg-rose-500/8",    label: "text-rose-400",    val: "text-rose-100",    glow: "shadow-[0_0_12px_rgba(251,113,133,0.15)]",   dot: "bg-rose-400"    },
+    cyan:    { border: "border-cyan-500/40",    bg: "bg-cyan-500/8",    label: "text-cyan-400",    val: "text-cyan-100",    glow: "shadow-[0_0_12px_rgba(34,211,238,0.15)]",    dot: "bg-cyan-400"    },
+    fuchsia: { border: "border-fuchsia-500/40", bg: "bg-fuchsia-500/8", label: "text-fuchsia-400", val: "text-fuchsia-100", glow: "shadow-[0_0_12px_rgba(232,121,249,0.15)]",   dot: "bg-fuchsia-400" },
+    violet:  { border: "border-violet-500/40",  bg: "bg-violet-500/8",  label: "text-violet-400",  val: "text-violet-100",  glow: "shadow-[0_0_12px_rgba(167,139,250,0.15)]",  dot: "bg-violet-400"  },
+    slate:   { border: "border-slate-600/50",   bg: "bg-slate-800/40",  label: "text-slate-400",   val: "text-slate-200",   glow: "",                                           dot: "bg-slate-500"   },
+    default: { border: "border-slate-700/50",   bg: "bg-slate-800/30",  label: "text-slate-400",   val: "text-slate-200",   glow: "",                                           dot: "bg-slate-600"   },
+  };
+  const t = tones[tone] || tones.default;
+
+  return (
+    <div className={`relative flex flex-col justify-between rounded-lg border ${t.border} ${t.bg} ${t.glow} px-2 py-1.5 overflow-hidden`}>
+      {/* top accent line */}
+      <div className={`absolute top-0 left-0 w-full h-[2px] rounded-t-lg opacity-60 ${t.dot}`} />
+
+      <div className="flex items-center justify-between mb-0.5">
+        <span className={`text-[8px] font-bold uppercase tracking-widest leading-none ${t.label}`}>{label}</span>
+        {Icon && <Icon size={9} className={`${t.label} opacity-60`} />}
+      </div>
+
+      <div className={`text-sm font-black leading-none ${t.val}`}>{value}</div>
+
+      {(sub || trend !== undefined) && (
+        <div className="flex items-center justify-between mt-0.5">
+          {sub && <span className="text-[8px] text-slate-500 truncate">{sub}</span>}
+          {trend !== undefined && (
+            <span className={`text-[8px] font-bold flex items-center gap-0.5 ${trend > 0 ? "text-emerald-400" : trend < 0 ? "text-rose-400" : "text-slate-500"}`}>
+              {trend > 0 ? <TrendingUp size={8} /> : trend < 0 ? <TrendingDown size={8} /> : <Minus size={8} />}
+              {Math.abs(trend)}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
    TV CARD
 ══════════════════════════════════════════════════════════ */
 function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, date, refreshTick }) {
@@ -349,8 +405,6 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
 
   const [varianceLoading, setVarianceLoading]     = useState(false);
   const [varianceChartData, setVarianceChartData] = useState([]);
-
-  // ── Top 3 defects state ──
   const [topDefectsForLine, setTopDefectsForLine] = useState([]);
   const [defectsLoading, setDefectsLoading]       = useState(false);
 
@@ -375,7 +429,6 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
     return `${x}th`;
   };
 
-  // ── Fetch variance chart data ──
   useEffect(() => {
     if (!factory || !building || !line || !date) { setVarianceChartData([]); return; }
     const controller = new AbortController();
@@ -412,7 +465,6 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
     return () => controller.abort();
   }, [factory, building, line, date, headerId, refreshTick]);
 
-  // ── Fetch Top 3 Defects from hourly-inspections ──
   useEffect(() => {
     if (!factory || !building || !line || !date) { setTopDefectsForLine([]); return; }
     const controller = new AbortController();
@@ -420,20 +472,11 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
       try {
         setDefectsLoading(true);
         const dateIso = new Date(date + "T00:00:00").toISOString();
-        const params  = new URLSearchParams({
-          factory,
-          building,
-          date:  dateIso,
-          limit: "1000",
-        });
+        const params  = new URLSearchParams({ factory, building, date: dateIso, limit: "1000" });
         const res  = await fetch(`/api/hourly-inspections?${params.toString()}`, { cache: "no-store", signal: controller.signal });
         const json = await res.json();
         if (!res.ok || !json.success) { setTopDefectsForLine([]); return; }
-
-        // filter to current line only
         const rows = (json.data || []).filter((r) => r.line === line);
-
-        // aggregate defects
         const defectMap = {};
         rows.forEach((row) => {
           if (!Array.isArray(row.selectedDefects)) return;
@@ -443,12 +486,10 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
             defectMap[d.name] = (defectMap[d.name] || 0) + qty;
           });
         });
-
         const top3 = Object.entries(defectMap)
           .map(([name, qty]) => ({ name, qty }))
           .sort((a, b) => b.qty - a.qty)
           .slice(0, 3);
-
         setTopDefectsForLine(top3);
       } catch (e) {
         if (e?.name === "AbortError") return;
@@ -458,6 +499,9 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
     fetchDefects();
     return () => controller.abort();
   }, [factory, building, line, date, refreshTick]);
+
+  // Plan percent fill for the arc progress label
+  const planColor = planPercent >= 90 ? "#34d399" : planPercent >= 60 ? "#fbbf24" : "#f87171";
 
   return (
     <div className={`relative w-full rounded-3xl border-2 shadow-[0_0_80px_rgba(0,0,0,0.9)] overflow-hidden bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900 ${isBehind ? "border-rose-500/70" : "border-emerald-500/70"}`}>
@@ -519,25 +563,64 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
           {/* STATS + VARIANCE + TOP 3 DEFECTS */}
           <div className="md:col-span-2 lg:col-span-6 flex flex-col gap-2.5 min-h-0">
 
-            {/* Plan vs Achieved */}
-            <div className="rounded-2xl border border-sky-700 bg-gradient-to-br from-sky-900/50 via-slate-950 to-slate-900/95 p-3 md:p-3.5 flex flex-col gap-2.5">
-              <div className="flex items-center justify-between text-[11px]">
-                <span className="uppercase tracking-wide text-sky-200">Plan vs Achieved</span>
-                <span className="badge badge-outline border-sky-500/60 bg-slate-950/80 text-[10px] text-sky-100">Plan: {formatNumber(planPercent, 1)}%</span>
-              </div>
-              <div className="mt-1 flex flex-col lg:flex-row items-center gap-3">
-                <KpiPie value={planPercent} label="" color="#22d3ee" size={96} animate={false} />
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-2 w-full text-[11px] md:text-xs">
-                  <TvStatBox label="Target"          value={formatNumber(targetQty, 0)}              accent="text-sky-200 border-sky-500/80" />
-                  <TvStatBox label="Achieved"         value={formatNumber(achievedQty, 0)}             accent="text-emerald-200 border-emerald-500/80" />
-                  <TvStatBox label="Variance"         value={formatNumber(varianceQty, 0)}             accent={varianceQty >= 0 ? "text-emerald-200 border-emerald-500/80" : "text-rose-200 border-rose-500/80"} />
-                  <TvStatBox label="Total Input"      value={formatNumber(totalInput || 0, 0)}         accent="text-cyan-200 border-cyan-500/80" />
-                  <TvStatBox label="WIP"              value={formatNumber(wip || 0, 0)}                accent="text-fuchsia-200 border-fuchsia-500/80" />
-                  <TvStatBox label="Upto Date Achieved"  value={formatNumber(totalAchieved || 0, 0)}      accent="text-fuchsia-200 border-fuchsia-500/80" />
-                  <TvStatBox label={`Last Day (${prevWorkingDate || "-"})`} value={formatNumber(prevWorkingAchievedQty || 0, 0)} accent="text-slate-200 border-slate-500/80" />
+            {/* ══ Plan vs Achieved — REDESIGNED ══ */}
+            <div className="rounded-2xl border border-sky-700/60 bg-gradient-to-br from-sky-950/60 via-slate-950 to-slate-900/95 p-3 md:p-3.5 flex flex-col gap-2">
+
+              {/* section header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="h-3.5 w-1 rounded-full bg-sky-400" />
+                  <span className="text-[11px] font-black uppercase tracking-widest text-sky-300">Plan vs Achieved</span>
+                </div>
+                {/* Plan % pill */}
+                <div className="flex items-center gap-1.5">
+                  <div className="h-1.5 w-16 rounded-full bg-slate-800 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{ width: `${planPercent}%`, background: planColor }}
+                    />
+                  </div>
+                  <span className="text-[11px] font-black tabular-nums" style={{ color: planColor }}>
+                    {formatNumber(planPercent, 1)}%
+                  </span>
                 </div>
               </div>
+
+              {/* pie + KpiTile cards — same style as Production & Quality */}
+              <div className="flex items-center gap-3">
+
+                <div className="shrink-0">
+                  <KpiPie value={planPercent} label="" color="#22d3ee" size={96} animate={false} />
+                </div>
+
+                <div className="flex-1 grid grid-cols-3 gap-2 min-w-0">
+                  <KpiTile label="TARGET"      value={formatNumber(targetQty, 0)}                                                tone="sky"    icon={Gauge} />
+                  <KpiTile label="ACHIEVED"    value={formatNumber(achievedQty, 0)}                                              tone="emerald" icon={TrendingUp} />
+                  <KpiTile label="VARIANCE"    value={formatNumber(varianceQty, 0)}                                              tone={varianceQty >= 0 ? "emerald" : "red"} icon={varianceQty >= 0 ? TrendingUp : TrendingDown} />
+                  <KpiTile label="TOTAL INPUT" value={formatNumber(totalInput || 0, 0)}                                          tone="sky"    icon={Activity} />
+                  <KpiTile label="WIP"         value={formatNumber(wip || 0, 0)}                                                 tone="purple" icon={Activity} />
+                  <KpiTile label="UPTO DATE"   value={formatNumber(totalAchieved || 0, 0)}                                       tone="amber"  icon={TrendingUp} />
+                </div>
+              </div>
+
+              {/* Last Day — full-width accent row */}
+              <div className="flex items-center justify-between rounded-xl border border-slate-700/50 bg-slate-800/30 px-3 py-1.5">
+                <div className="flex items-center gap-2">
+                  <div className="h-1.5 w-1.5 rounded-full bg-slate-500" />
+                  <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                    Last Day
+                    {prevWorkingDate && (
+                      <span className="ml-1 normal-case tracking-normal font-normal text-slate-500">({prevWorkingDate})</span>
+                    )}
+                  </span>
+                </div>
+                <span className="text-sm font-black text-slate-200 tabular-nums">
+                  {formatNumber(prevWorkingAchievedQty || 0, 0)}
+                </span>
+              </div>
+
             </div>
+            {/* ══ end Plan vs Achieved ══ */}
 
             {/* Production & Quality + Variance chart + Top 3 Defects */}
             <div className="rounded-2xl border border-amber-600 bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900/95 p-3 flex flex-col gap-2 min-h-0">
@@ -558,7 +641,7 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
                 <KpiTile label="AVG EFF%"     value={`${formatNumber(avgEff, 1)}%`}     tone="purple"  icon={TrendingUp} />
               </div>
 
-              {/* ── Variance chart + Top 3 Defects side by side ── */}
+              {/* Variance chart + Top 3 Defects side by side */}
               <div className="mt-1 min-h-0">
                 <div className="flex items-center justify-between text-[11px] text-slate-200 mb-1">
                   <span className="uppercase tracking-wide text-amber-200">Hourly Variance</span>
@@ -572,25 +655,16 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
                 </div>
 
                 <div className="flex gap-2 h-24 sm:h-28 md:h-32 lg:h-36">
-
-                  {/* Variance chart — takes remaining width */}
                   <div className="flex-1 min-w-0">
                     <VarianceBarChart data={varianceChartData} />
                   </div>
 
-                  {/* ── Top 3 Defects panel ── */}
+                  {/* Top 3 Defects panel */}
                   <div className="w-[155px] sm:w-[170px] shrink-0 rounded-xl border border-rose-500/50 bg-rose-950/60 flex flex-col overflow-hidden">
-                    {/* Header */}
                     <div className="px-2 py-1 flex items-center justify-between border-b border-rose-500/30 bg-rose-500/15">
-                      <span className="text-[9px] uppercase tracking-widest font-bold text-rose-300">
-                        Top 3 Defects
-                      </span>
-                      {defectsLoading && (
-                        <span className="loading loading-spinner loading-[10px] text-rose-400" />
-                      )}
+                      <span className="text-[9px] uppercase tracking-widest font-bold text-rose-300">Top 3 Defects</span>
+                      {defectsLoading && <span className="loading loading-spinner loading-[10px] text-rose-400" />}
                     </div>
-
-                    {/* Defect rows */}
                     <div className="flex-1 flex flex-col justify-around px-2 py-1.5 gap-1">
                       {topDefectsForLine.length === 0 ? (
                         <div className="flex items-center justify-center h-full text-[10px] text-slate-500 text-center">
@@ -607,28 +681,17 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
                           const max = topDefectsForLine[0]?.qty || 1;
                           const pct = Math.round((d.qty / max) * 100);
                           const rankLabels = ["1st", "2nd", "3rd"];
-
                           return (
                             <div key={d.name} className="flex flex-col gap-0.5">
                               <div className="flex items-center justify-between gap-1">
                                 <div className="flex items-center gap-1 min-w-0">
-                                  <span className={`text-[8px] font-black uppercase ${c.text} shrink-0`}>
-                                    {rankLabels[idx]}
-                                  </span>
-                                  <span className={`text-[9px] font-semibold ${c.text} truncate`} title={d.name}>
-                                    {d.name}
-                                  </span>
+                                  <span className={`text-[8px] font-black uppercase ${c.text} shrink-0`}>{rankLabels[idx]}</span>
+                                  <span className={`text-[9px] font-semibold ${c.text} truncate`} title={d.name}>{d.name}</span>
                                 </div>
-                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${c.badge} ${c.text} ${c.glow} shrink-0`}>
-                                  {d.qty}
-                                </span>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${c.badge} ${c.text} ${c.glow} shrink-0`}>{d.qty}</span>
                               </div>
-                              {/* Progress bar */}
                               <div className="h-1.5 w-full rounded-full bg-slate-800/80 overflow-hidden">
-                                <div
-                                  className={`h-full rounded-full ${c.bar} transition-all duration-700`}
-                                  style={{ width: `${pct}%` }}
-                                />
+                                <div className={`h-full rounded-full ${c.bar} transition-all duration-700`} style={{ width: `${pct}%` }} />
                               </div>
                             </div>
                           );
@@ -636,11 +699,10 @@ function TvLineCard({ lineData, header, styleMedia, wipData, factory, building, 
                       )}
                     </div>
                   </div>
-                  {/* ── end Top 3 Defects ── */}
-
                 </div>
               </div>
             </div>
+
           </div>
           {/* end STATS column */}
 

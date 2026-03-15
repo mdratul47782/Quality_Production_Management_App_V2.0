@@ -3,11 +3,18 @@ import { NextResponse } from "next/server";
 import { dbConnect } from "@/services/mongo";
 import { lineLayoutModel } from "@/models/lineLayout-model";
 
-function calcTargets(smv, planEfficiency, operator, workingHours) {
-  const eff = (planEfficiency || 0) / 100;
-  const oneHour = smv > 0 ? Math.round((60 / smv) * eff * (operator || 0)) : 0;
-  const daily   = Math.max(0, oneHour * (workingHours || 8) - 2);
-  return { oneHourTarget: oneHour, dailyTarget: daily };
+// Correct formula: manpower = operator + helper + seamSealing
+// dailyTarget = (manpower × hours × 60 / smv) × (eff/100)
+// oneHourTarget = dailyTarget / hours
+function calcTargets(smv, planEfficiency, operator, helper, seamSealing, workingHours) {
+  const manpower = (parseInt(operator) || 0) + (parseInt(helper) || 0) + (parseInt(seamSealing) || 0);
+  const e = (parseFloat(planEfficiency) || 0) / 100;
+  const s = parseFloat(smv) || 0;
+  const h = parseInt(workingHours) || 8;
+  if (s === 0 || manpower === 0) return { manpower, oneHourTarget: 0, dailyTarget: 0 };
+  const dailyTarget   = Math.round((manpower * h * 60 / s) * e);
+  const oneHourTarget = Math.round(dailyTarget / h);
+  return { manpower, oneHourTarget, dailyTarget };
 }
 
 // GET /api/line-layouts?factory=K-2&floor=B-3&lineNo=01
@@ -15,7 +22,7 @@ export async function GET(request) {
   try {
     await dbConnect();
     const { searchParams } = new URL(request.url);
-    const factory = searchParams.get("factory");   // ← NEW
+    const factory = searchParams.get("factory");
     const floor   = searchParams.get("floor");
     const lineNo  = searchParams.get("lineNo");
 
@@ -37,7 +44,7 @@ export async function POST(request) {
     await dbConnect();
     const body = await request.json();
     const {
-      factory,                                         // ← NEW
+      factory,
       floor, lineNo, buyer, style, item,
       smv, planEfficiency, operator, helper, seamSealing,
       workingHours, sketchUrl,
@@ -45,20 +52,27 @@ export async function POST(request) {
 
     if (!floor || !lineNo || !buyer) {
       return NextResponse.json(
-        { success: false, message: "floor, lineNo, buyer আবশ্যক।" },
+        { success: false, message: "floor, lineNo, and buyer are required." },
         { status: 400 }
       );
     }
 
-    const manpower = (operator || 0) + (helper || 0) + (seamSealing || 0);
-    const { oneHourTarget, dailyTarget } = calcTargets(smv, planEfficiency, operator, workingHours);
+    const { manpower, oneHourTarget, dailyTarget } = calcTargets(
+      smv, planEfficiency, operator, helper, seamSealing, workingHours
+    );
 
     const layout = await lineLayoutModel.create({
-      factory:  factory || "",                         // ← NEW
+      factory:  factory || "",
       floor, lineNo, buyer, style, item,
-      smv, planEfficiency, operator, helper, seamSealing,
-      manpower, workingHours: workingHours || 8,
-      oneHourTarget, dailyTarget,
+      smv:            parseFloat(smv)            || 0,
+      planEfficiency: parseFloat(planEfficiency) || 0,
+      operator:       parseInt(operator)         || 0,
+      helper:         parseInt(helper)           || 0,
+      seamSealing:    parseInt(seamSealing)      || 0,
+      manpower,
+      workingHours: parseInt(workingHours) || 8,
+      oneHourTarget,
+      dailyTarget,
       sketchUrl: sketchUrl || "",
       processes: [],
     });

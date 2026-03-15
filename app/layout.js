@@ -24,7 +24,7 @@ const poppins = Poppins({
 });
 
 export const metadata = {
-  title: "HKD PRODUCTION APP",
+  title: "Updating HKD PRODUCTION APP",
   description: "CREATED BY MD.RATUL",
 };
 

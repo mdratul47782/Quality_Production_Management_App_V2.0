@@ -39,6 +39,7 @@ const MACHINE_COLORS = {
 
 function mc(type) { return MACHINE_COLORS[type] || MACHINE_COLORS["default"]; }
 
+// ─── FIX-1: Always compute targets live from fields, never trust stored values ──
 function calcTargets(smv, eff, operator, helper, seamSealing, hours) {
   const manpower = (parseInt(operator)||0) + (parseInt(helper)||0) + (parseInt(seamSealing)||0);
   const e = (parseFloat(eff) || 0) / 100;
@@ -50,123 +51,98 @@ function calcTargets(smv, eff, operator, helper, seamSealing, hours) {
   return { manpower, oneHourTarget, dailyTarget };
 }
 
-// ─── Machine abbreviation map for print ──────────────────────────────────────
-const TO_ABBR = {
-  "SINGLE NDL (PLAIN M/C)":            "SNLS",
-  "SINGLE NDL (TOP FEED) M/C":         "SNLS",
-  "SINGLE NDL (NDL FEED) M/C":         "SNLS",
-  "SINGLE NDL (CUFFS) M/C":            "SNLS",
-  "DLM SINGLE NEEDLE VERTICAL CUTTER": "DLM",
-  "DOUBLE NDL":                         "SNLS/SNLS",
-  "POCKET WELL (APW) M/C":             "PT",
-  "3/8 T CHAIN STITCH (3 NDL) M/C":   "SNLS",
-  "INTER LOCK (2 NDL 5TH) M/C":       "OL",
-  "OVER LOCK (2 NDL 4TH) M/C":        "OL",
-  "BARTACK M/C":                        "BTK",
-  "KANSAI":                             "KSI",
-  "EYELET HOLE M/C":                    "BH",
-  "HELPER":                             "HELPER",
-};
-function toAbbr(t) {
-  if (!t) return "";
-  if (TO_ABBR[t]) return TO_ABBR[t];
-  if (t.length <= 14 && !t.includes("(")) return t.toUpperCase();
-  return t;
-}
-
-// ─── openPrintWindow ─────────────────────────────────────────────────────────
-// ─── openPrintWindow (FIXED) ──────────────────────────────────────────────────
-// BUG: old code did  bySn[p.serialNo] = p   → last write wins, first machine lost
-// FIX: store arrays  bySn[p.serialNo].push(p) → all machines kept
-// Then zip left-array + right-array → one <tr> per entry in the longer array.
+// ─── openPrintWindow ──────────────────────────────────────────────────────────
+// Compact print: info table + image side-by-side, tiny fonts to fit 50 processes on A4
 function openPrintWindow(layout) {
   if (!layout) return;
- 
+
+  // FIX-1: recompute targets from fields so print always shows correct values
+  const computed = calcTargets(
+    layout.smv, layout.planEfficiency,
+    layout.operator, layout.helper, layout.seamSealing, layout.workingHours
+  );
+
   const procs = [...(layout.processes || [])].sort((a, b) => a.serialNo - b.serialNo);
- 
-  // ✅ FIX: arrays instead of single values
+
   const bySn = {};
   procs.forEach((p) => {
     if (!bySn[p.serialNo]) bySn[p.serialNo] = [];
     bySn[p.serialNo].push(p);
   });
- 
+
   const maxSn = procs.length ? procs[procs.length - 1].serialNo : 0;
- 
+
   const pairs = [];
   for (let sn = 1; sn <= maxSn; sn += 2) {
-    const L = bySn[sn]     || null;   // array | null
-    const R = bySn[sn + 1] || null;   // array | null
+    const L = bySn[sn]     || null;
+    const R = bySn[sn + 1] || null;
     if (!L && !R) continue;
     pairs.push({ L, R });
   }
- 
-  // Machine summary — full name, exclude HELPER
+
   const machSummary = {};
   procs.forEach((p) => {
     if (!p.machineType || p.machineType === "HELPER") return;
     machSummary[p.machineType] = (machSummary[p.machineType] || 0) + (p.machines?.length || 1);
   });
   const machTotal = Object.values(machSummary).reduce((a, b) => a + b, 0);
- 
+
   const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
- 
+
+  // Compact info rows — 5 rows × 2 col-pairs, very small font
   const infoRows = [
-    ["Unit",  `${layout.floor} - LINE NO-${layout.lineNo}`, "Plan Efficiency :",                            `${layout.planEfficiency}%`],
-    ["Buyer", layout.buyer,                                  "Op + Hel + Seam Sealing",                     `${layout.operator}+${layout.helper}+${layout.seamSealing}`],
-    ["Style", layout.style,                                  "Manpower:",                                   layout.manpower],
-    ["Item",  layout.item,                                   "1 Hour Target:",                              layout.oneHourTarget],
-    ["SMV",   layout.smv,                                    `Total Daily Target (${layout.workingHours}hrs)`, layout.dailyTarget],
+    ["Unit",  `${layout.floor} - LINE NO-${layout.lineNo}`, "Plan Efficiency:",                              `${layout.planEfficiency}%`],
+    ["Buyer", layout.buyer,                                  "Op + Hel + Seam Sealing",                      `${layout.operator}+${layout.helper}+${layout.seamSealing}`],
+    ["Style", layout.style,                                  "Manpower:",                                    computed.manpower],
+    ["Item",  layout.item,                                   "1 Hour Target:",                               computed.oneHourTarget],
+    ["SMV",   layout.smv,                                    `Total Daily Target (${layout.workingHours}hrs)`, computed.dailyTarget],
   ].map(([l, v, l2, v2]) => `
-    <tr style="height:18px">
-      <td style="border:1px solid #000;font-weight:bold;padding:1px 3px">${esc(l)}</td>
-      <td colspan="3" style="border:1px solid #000;padding:1px 3px">${esc(v)}</td>
-      <td colspan="2" style="border:1px solid #000;font-weight:bold;text-align:right;padding:1px 3px">${esc(l2)}</td>
-      <td colspan="2" style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 3px">${esc(v2)}</td>
+    <tr style="height:14px">
+      <td style="border:1px solid #000;font-weight:bold;padding:1px 2px;font-size:6px">${esc(l)}</td>
+      <td colspan="2" style="border:1px solid #000;padding:1px 2px;font-size:6px">${esc(v)}</td>
+      <td style="border:1px solid #000;font-weight:bold;text-align:right;padding:1px 2px;font-size:6px">${esc(l2)}</td>
+      <td style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 2px;font-size:6px">${esc(v2)}</td>
     </tr>`).join("");
- 
-  // ── Render 3 TDs for one process entry (or 3 empty TDs if null) ──────────
+
   function cellHtml(e) {
     if (!e) return `
-      <td style="border:1px solid #000;padding:1px 3px"></td>
-      <td style="border:1px solid #000;padding:1px 3px"></td>
-      <td style="border:1px solid #000;padding:1px 3px"></td>`;
+      <td style="border:1px solid #000;padding:1px 2px"></td>
+      <td style="border:1px solid #000;padding:1px 2px"></td>
+      <td style="border:1px solid #000;padding:1px 2px"></td>`;
     return `
-      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:8px;padding:1px 3px">${esc(e.serialNo)}</td>
-      <td style="border:1px solid #000;font-weight:bold;font-size:7px;padding:1px 3px;white-space:normal">${esc(e.processName)}</td>
-      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6.5px;padding:1px 3px;white-space:normal;line-height:1.2">${esc(e.machineType ?? "")}</td>`;
+      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6px;padding:1px 2px">${esc(e.serialNo)}</td>
+      <td style="border:1px solid #000;font-weight:bold;font-size:6px;padding:1px 2px;white-space:normal">${esc(e.processName)}</td>
+      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:5.5px;padding:1px 2px;white-space:normal;line-height:1.1">${esc(e.machineType ?? "")}</td>`;
   }
- 
-  // ✅ FIX: zip left[] + right[] — produces one <tr> per machine in the longer array
+
   const processRows = pairs.map(({ L, R }) => {
     const la = L || [];
     const ra = R || [];
     const n  = Math.max(la.length, ra.length);
     let html = "";
     for (let i = 0; i < n; i++) {
-      html += `<tr style="height:22px">
+      html += `<tr style="height:14px">
         ${cellHtml(la[i] ?? null)}
-        <td style="border:none"></td>
+        <td style="border:none;width:2px"></td>
         ${cellHtml(ra[i] ?? null)}
-        <td style="border:none"></td>
+        <td style="border:none;width:2px"></td>
       </tr>`;
     }
     return html;
   }).join("");
- 
+
   const machRows = Object.entries(machSummary).map(([m, q]) =>
-    `<tr style="height:16px">
-      <td style="border:1px solid #000;padding:1px 3px;font-size:7px">${esc(m)}</td>
-      <td style="border:1px solid #000;text-align:center;font-size:7.5px;padding:1px 3px">${q}</td>
+    `<tr style="height:12px">
+      <td style="border:1px solid #000;padding:1px 2px;font-size:5.5px">${esc(m)}</td>
+      <td style="border:1px solid #000;text-align:center;font-size:6px;padding:1px 2px">${q}</td>
     </tr>`
   ).join("");
- 
-  const sketchCell = layout.sketchUrl
-    ? `<td style="border:1px solid #000;text-align:center;padding:2px;width:18%">
-        <img src="${esc(layout.sketchUrl)}" style="max-height:52px;max-width:100%;object-fit:contain;" crossorigin="anonymous"/>
-       </td>`
-    : `<td style="border:1px solid #000;width:18%"></td>`;
- 
+
+  // Image placed BESIDE the info table (right cell)
+  const sketchImg = layout.sketchUrl
+    ? `<img src="${esc(layout.sketchUrl)}" style="max-height:60px;max-width:90px;object-fit:contain;" crossorigin="anonymous"/>`
+    : "";
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -174,7 +150,7 @@ function openPrintWindow(layout) {
   <title>Line Layout - ${esc(layout.floor)} Line ${esc(layout.lineNo)}</title>
   <style>
     * { box-sizing: border-box; }
-    body { margin: 0; padding: 8mm 9mm; font-family: Arial, sans-serif; font-size: 7.5px; background: #fff; }
+    body { margin: 0; padding: 5mm 6mm; font-family: Arial, sans-serif; font-size: 6px; background: #fff; }
     table { border-collapse: collapse; }
     @page { size: A4 portrait; margin: 0; }
     tr { page-break-inside: avoid; }
@@ -183,87 +159,103 @@ function openPrintWindow(layout) {
 </head>
 <body>
   <div>
- 
-    <table style="width:100%;margin-bottom:2px">
+
+    <!-- Company title -->
+    <table style="width:100%;margin-bottom:1px">
       <tr>
-        <td style="border:1px solid #000;font-weight:bold;font-size:11px;text-align:center;padding:3px 6px;width:82%">
+        <td style="border:1px solid #000;font-weight:bold;font-size:9px;text-align:center;padding:2px 4px">
           HKD OUTDOOR INNOVATIONS LTD
         </td>
-        ${sketchCell}
       </tr>
     </table>
- 
+
     <table style="width:100%;margin-bottom:2px">
-      <tr><td style="border:1px solid #000;font-weight:bold;font-size:11px;text-align:center;padding:3px 6px;background:#FFFF00">MACHINE LAYOUT</td></tr>
+      <tr><td style="border:1px solid #000;font-weight:bold;font-size:8px;text-align:center;padding:2px 4px;background:#FFFF00">MACHINE LAYOUT</td></tr>
     </table>
- 
+
+    <!-- Info table + image side by side -->
+    <table style="width:100%;margin-bottom:4px;border-collapse:collapse">
+      <tr>
+        <!-- Info section -->
+        <td style="padding:0;vertical-align:top;width:82%">
+          <table style="width:100%;border-collapse:collapse">
+            <colgroup>
+              <col style="width:13%"><col style="width:28%"><col style="width:10%">
+              <col style="width:30%"><col style="width:19%">
+            </colgroup>
+            <tbody>${infoRows}</tbody>
+          </table>
+        </td>
+        <!-- Image section -->
+        <td style="border:1px solid #000;text-align:center;vertical-align:middle;padding:2px;width:18%">
+          ${sketchImg}
+        </td>
+      </tr>
+    </table>
+
+    <!-- Process table -->
     <table style="width:100%;margin-bottom:5px">
       <colgroup>
-        <col style="width:11%"><col style="width:32%"><col style="width:3%"><col style="width:18%">
-        <col style="width:3%"><col style="width:3%"><col style="width:18%"><col style="width:12%">
-      </colgroup>
-      <tbody>${infoRows}</tbody>
-    </table>
- 
-    <table style="width:100%;margin-bottom:8px">
-      <colgroup>
-        <col style="width:5%"><col style="width:30%"><col style="width:13%"><col style="width:2%">
-        <col style="width:5%"><col style="width:30%"><col style="width:13%"><col style="width:2%">
+        <col style="width:4%"><col style="width:28%"><col style="width:13%"><col style="width:2%">
+        <col style="width:4%"><col style="width:28%"><col style="width:13%"><col style="width:2%">
+        <col style="width:6%">
       </colgroup>
       <thead>
         <tr>
-          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">SL NO</td>
-          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">Process Name</td>
-          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">Machine</td>
+          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">SL</td>
+          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">Process Name</td>
+          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">Machine</td>
           <td style="border:none"></td>
-          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">SL NO</td>
-          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">Process Name</td>
-          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">Machine</td>
+          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">SL</td>
+          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">Process Name</td>
+          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">Machine</td>
           <td style="border:none"></td>
         </tr>
       </thead>
       <tbody>${processRows}</tbody>
     </table>
- 
-    <table style="width:45%;margin-bottom:18px">
+
+    <!-- Machine summary -->
+    <table style="width:42%;margin-bottom:12px">
       <tr>
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px">Machine Name</td>
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px;width:20%">Qty</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">Machine Name</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px;width:18%">Qty</td>
       </tr>
       ${machRows}
-      <tr style="height:16px">
-        <td style="border:1px solid #000;font-weight:bold;padding:1px 3px">Total</td>
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 3px">${machTotal}</td>
+      <tr style="height:12px">
+        <td style="border:1px solid #000;font-weight:bold;padding:1px 2px;font-size:6px">Total</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 2px;font-size:6px">${machTotal}</td>
       </tr>
     </table>
- 
+
+    <!-- Signature row -->
     <table style="width:100%">
       <colgroup><col style="width:25%"><col style="width:25%"><col style="width:25%"><col style="width:25%"></colgroup>
-      <tr style="height:38px">
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px">Sr. Supervisor</td>
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px">Technician</td>
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px">IE Executive</td>
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px">Maintenance Supervisor</td>
+      <tr style="height:30px">
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px;font-size:6px">Sr. Supervisor</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px;font-size:6px">Technician</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px;font-size:6px">IE Executive</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px;font-size:6px">Maintenance Supervisor</td>
       </tr>
     </table>
- 
+
   </div>
 </body>
 </html>`;
- 
+
   const old = document.getElementById("ll-print-iframe");
   if (old) old.remove();
- 
+
   const iframe = document.createElement("iframe");
   iframe.id = "ll-print-iframe";
   iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;";
   document.body.appendChild(iframe);
- 
+
   const iDoc = iframe.contentDocument || iframe.contentWindow.document;
   iDoc.open();
   iDoc.write(html);
   iDoc.close();
- 
+
   setTimeout(() => {
     try { iframe.contentWindow.focus(); iframe.contentWindow.print(); }
     catch (e) { console.error("iframe print failed:", e); }
@@ -293,11 +285,11 @@ function SearchableSelect({ value, onChange, options, placeholder = "— Select 
         <div className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded-xl shadow-2xl overflow-hidden">
           <div className="p-2 border-b border-slate-200">
             <input autoFocus type="text" value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder="খুঁজুন..." className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 placeholder:text-slate-400" />
+              placeholder="Search..." className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-400 placeholder:text-slate-400" />
           </div>
           <div className="max-h-56 overflow-y-auto">
             {filtered.length === 0
-              ? <p className="text-center text-slate-400 text-sm py-6">কোনো ফলাফল নেই</p>
+              ? <p className="text-center text-slate-400 text-sm py-6">No results found</p>
               : filtered.map((o) => (
                 <button key={o} type="button" onClick={() => { onChange(o); setOpen(false); setQuery(""); }}
                   className={"w-full text-left px-4 py-2.5 text-sm hover:bg-blue-50 transition-colors " + (value === o ? "bg-blue-50 text-blue-700 font-semibold" : "text-slate-700")}>
@@ -318,7 +310,7 @@ function AddProcessNameModal({ onAdd, onClose }) {
   const [error, setError] = React.useState("");
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!name.trim()) { setError("নাম লিখুন।"); return; }
+    if (!name.trim()) { setError("Please enter a name."); return; }
     setSaving(true);
     try {
       const res  = await fetch("/api/process-names", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim() }) });
@@ -333,16 +325,16 @@ function AddProcessNameModal({ onAdd, onClose }) {
         <div className="h-1 bg-gradient-to-r from-blue-500 to-violet-500 rounded-t-2xl" />
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-slate-800 text-lg">নতুন Process Name যোগ করুন</h3>
+            <h3 className="font-bold text-slate-800 text-lg">Add New Process Name</h3>
             <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <input autoFocus type="text" value={name} onChange={(e) => { setName(e.target.value); setError(""); }}
-              placeholder="Process name লিখুন..." className="w-full bg-white border border-slate-300 text-slate-800 rounded-lg px-4 py-3 text-base focus:outline-none focus:border-blue-500 placeholder:text-slate-400" />
+              placeholder="Enter process name..." className="w-full bg-white border border-slate-300 text-slate-800 rounded-lg px-4 py-3 text-base focus:outline-none focus:border-blue-500 placeholder:text-slate-400" />
             {error && <p className="text-red-600 text-sm">{error}</p>}
             <div className="flex gap-3">
-              <button type="submit" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all">{saving ? "যোগ হচ্ছে..." : "+ যোগ করুন"}</button>
-              <button type="button" onClick={onClose} className="px-5 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">বাতিল</button>
+              <button type="submit" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all">{saving ? "Adding..." : "+ Add"}</button>
+              <button type="button" onClick={onClose} className="px-5 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">Cancel</button>
             </div>
           </form>
         </div>
@@ -373,12 +365,12 @@ function WasteFloorPicker({ processEntry, layoutFloor, onConfirm, onCancel }) {
           <div className="flex items-center gap-3 mb-4">
             <span className="text-2xl">🚫</span>
             <div>
-              <h3 className="font-bold text-slate-800 text-lg">Machine Waste করুন</h3>
+              <h3 className="font-bold text-slate-800 text-lg">Waste Machine</h3>
               <p className="text-slate-500 text-base">#{processEntry.serialNo} — {processEntry.processName?.substring(0, 40)}</p>
             </div>
           </div>
           <div className="mb-4">
-            <label className="block text-sm text-slate-500 uppercase tracking-widest mb-2 font-semibold">কোন Floor এ পাঠাবেন?</label>
+            <label className="block text-sm text-slate-500 uppercase tracking-widest mb-2 font-semibold">Send to which floor?</label>
             <select value={wasteFloor} onChange={(e) => setWasteFloor(e.target.value)}
               className="w-full bg-slate-50 border border-slate-300 text-slate-800 rounded-lg px-4 py-3 text-base focus:outline-none focus:border-red-400">
               {FLOOR_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
@@ -399,11 +391,11 @@ function WasteFloorPicker({ processEntry, layoutFloor, onConfirm, onCancel }) {
             </div>
           )}
           <p className="text-sm text-slate-500 bg-slate-50 rounded-lg px-3 py-2 mb-5">
-            এই process টি সরানো হবে এবং machine গুলো <strong className="text-red-600">{wasteFloor}</strong> floor এ idle হবে।
+            This process will be removed and machines will become idle at <strong className="text-red-600">{wasteFloor}</strong> floor.
           </p>
           <div className="flex gap-3">
-            <button onClick={() => onConfirm(wasteFloor)} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl text-base transition-all">🚫 Waste করুন</button>
-            <button onClick={onCancel} className="px-6 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">বাতিল</button>
+            <button onClick={() => onConfirm(wasteFloor)} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl text-base transition-all">🚫 Confirm Waste</button>
+            <button onClick={onCancel} className="px-6 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">Cancel</button>
           </div>
         </div>
       </div>
@@ -464,18 +456,18 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
         <div className="p-6">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h3 className="font-bold text-slate-800 text-lg">Serial Number select করুন</h3>
-              <p className="text-slate-400 text-sm mt-0.5">Idle machine গুলোর মধ্য থেকে বেছে নিন</p>
+              <h3 className="font-bold text-slate-800 text-lg">Select Serial Number</h3>
+              <p className="text-slate-400 text-sm mt-0.5">Choose from available idle machines</p>
             </div>
             <span className="text-sm text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full font-medium">{machineType}</span>
           </div>
           {loading ? (
-            <p className="text-slate-400 text-base animate-pulse py-10 text-center">লোড হচ্ছে...</p>
+            <p className="text-slate-400 text-base animate-pulse py-10 text-center">Loading...</p>
           ) : idleUnits.length === 0 ? (
             <div className="py-10 text-center">
               <p className="text-4xl mb-3">🔍</p>
-              <p className="text-slate-500 text-base font-medium">কোনো idle machine পাওয়া যায়নি।</p>
-              <p className="text-slate-400 text-sm mt-1">Machine Inventory তে idle unit যোগ করুন।</p>
+              <p className="text-slate-500 text-base font-medium">No idle machines found.</p>
+              <p className="text-slate-400 text-sm mt-1">Add idle units in Machine Inventory.</p>
             </div>
           ) : (
             <div className="max-h-80 overflow-y-auto space-y-4 pr-1">
@@ -510,7 +502,7 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
           )}
           {selected.length > 0 && (
             <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
-              <p className="text-xs text-blue-600 uppercase tracking-widest font-bold mb-2">নির্বাচিত ({selected.length}টি)</p>
+              <p className="text-xs text-blue-600 uppercase tracking-widest font-bold mb-2">Selected ({selected.length})</p>
               <div className="flex flex-wrap gap-1.5">
                 {selected.map((s) => (
                   <span key={`${s.machineId}-${s.serialNumber}`} className="text-xs font-mono font-bold bg-blue-600 text-white px-2.5 py-1 rounded-lg">
@@ -523,9 +515,9 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
           <div className="flex gap-3 mt-5">
             <button disabled={selected.length === 0} onClick={() => onConfirm(selected)}
               className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all">
-              {selected.length > 0 ? `${selected.length}টি machine যোগ করুন →` : "Serial select করুন"}
+              {selected.length > 0 ? `Add ${selected.length} machine(s) →` : "Select a serial number"}
             </button>
-            <button onClick={onCancel} className="px-6 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">বাতিল</button>
+            <button onClick={onCancel} className="px-6 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">Cancel</button>
           </div>
         </div>
       </div>
@@ -553,6 +545,11 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
     else               rowMap.get(rowIdx).right = sn;
   });
   const rows = Array.from(rowMap.entries()).sort((a, b) => a[0] - b[0]).map(([, v]) => v);
+
+  // FIX-1: compute targets live from layoutInfo fields
+  const liveTargets = layoutInfo
+    ? calcTargets(layoutInfo.smv, layoutInfo.planEfficiency, layoutInfo.operator, layoutInfo.helper, layoutInfo.seamSealing, layoutInfo.workingHours)
+    : { manpower: 0, oneHourTarget: 0, dailyTarget: 0 };
 
   const summary = {};
   sorted.forEach((p) => { const key = p.machineType || "?"; summary[key] = (summary[key] || 0) + (p.machines?.length || 1); });
@@ -638,7 +635,7 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
           transition: "border-color 0.1s, background 0.1s",
         }}>
         <span style={{ fontSize: 11, fontWeight: 700, color: isOver ? "#1d4ed8" : "#94a3b8", letterSpacing: "0.05em" }}>
-          {isOver ? `▼ serial ${serialNo} এ রাখুন` : `# ${serialNo} — খালি`}
+          {isOver ? `▼ Drop at slot ${serialNo}` : `# ${serialNo} — Empty`}
         </span>
       </div>
     );
@@ -655,7 +652,7 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
         <div className="sticky top-0 z-20 bg-[#f0f4f8] border-b-2 border-slate-300">
           <div className="text-center py-2 border-b border-slate-300 flex items-center justify-center gap-3">
             <span className="text-sm font-black uppercase tracking-widest text-slate-700">MACHINE LAYOUT</span>
-            <span className="text-xs text-slate-400 font-normal normal-case tracking-normal">· drag করে serial swap বা খালি slot এ রাখুন</span>
+            <span className="text-xs text-slate-400 font-normal normal-case tracking-normal">· drag to swap serial or move to empty slot</span>
           </div>
           <div className="flex items-stretch divide-x divide-slate-300">
             <div className="flex-1 grid grid-cols-3 divide-x divide-slate-300 text-sm">
@@ -667,10 +664,11 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
                 { label: "SMV",           value: layoutInfo.smv },
                 { label: "Plan Eff.",     value: `${layoutInfo.planEfficiency}%` },
                 { label: "Op + Hel + SS", value: `${layoutInfo.operator}+${layoutInfo.helper}+${layoutInfo.seamSealing}` },
-                { label: "Manpower",      value: layoutInfo.manpower },
+                // FIX-1: show live-computed targets instead of stored ones
+                { label: "Manpower",      value: liveTargets.manpower },
                 { label: "Working Hrs",   value: `${layoutInfo.workingHours}h` },
-                { label: "1 Hour Tgt",    value: layoutInfo.oneHourTarget },
-                { label: `Daily Tgt (${layoutInfo.workingHours}h)`, value: layoutInfo.dailyTarget },
+                { label: "1 Hour Tgt",    value: liveTargets.oneHourTarget },
+                { label: `Daily Tgt (${layoutInfo.workingHours}h)`, value: liveTargets.dailyTarget },
                 { label: "Processes",     value: processes.length },
               ].map(({ label, value }) => (
                 <div key={label} className="px-3 py-2 flex justify-between items-center">
@@ -703,7 +701,7 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
       {rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-slate-400 gap-2">
           <span className="text-4xl">📋</span>
-          <p className="text-base">Process যোগ করলে এখানে layout দেখাবে</p>
+          <p className="text-base">Add processes to see the layout here</p>
         </div>
       ) : (
         <table className="w-full border-collapse relative z-10" style={{ tableLayout: "fixed" }}>
@@ -797,6 +795,46 @@ export default function LineLayoutPage() {
   const [loadingPNames, setLoadingPNames] = React.useState(false);
   const [showAddPName,  setShowAddPName]  = React.useState(false);
 
+  // ── Delete layout state ──
+  // machineFloors: { "serialNumber": "floor" } — per-machine return floor
+  const [deleteTarget,  setDeleteTarget]  = useState(null);
+  const [machineFloors, setMachineFloors] = useState({});  // key=serialNumber, val=floor
+  const [deleting,      setDeleting]      = useState(false);
+
+  // Build flat list of all machines with serial numbers from a layout
+  function getAllMachines(layout) {
+    const result = [];
+    for (const proc of layout.processes || []) {
+      for (const m of proc.machines || []) {
+        if (m.serialNumber) {
+          result.push({
+            key:          m.serialNumber,
+            serialNumber: m.serialNumber,
+            machineName:  m.machineName,
+            machineId:    m.machineId,
+            fromFloor:    m.fromFloor,
+            processName:  proc.processName,
+            serialNo:     proc.serialNo,
+            machineType:  proc.machineType,
+          });
+        }
+      }
+    }
+    return result;
+  }
+
+  function openDeleteModal(layout) {
+    setDeleteTarget(layout);
+    // Pre-fill each machine's return floor with its original fromFloor
+    const floors = {};
+    for (const proc of layout.processes || []) {
+      for (const m of proc.machines || []) {
+        if (m.serialNumber) floors[m.serialNumber] = m.fromFloor || "";
+      }
+    }
+    setMachineFloors(floors);
+  }
+
   const loadLayouts = useCallback(async () => {
     setListLoading(true);
     try {
@@ -859,7 +897,7 @@ export default function LineLayoutPage() {
 
   async function handleCreateLayout(e) {
     e.preventDefault();
-    if (!form.floor || !form.lineNo || !form.buyer) { showToast("error", "Floor, Line No এবং Buyer আবশ্যক।"); return; }
+    if (!form.floor || !form.lineNo || !form.buyer) { showToast("error", "Floor, Line No and Buyer are required."); return; }
     setSaving(true);
     try {
       let sketchUrl = "";
@@ -870,7 +908,7 @@ export default function LineLayoutPage() {
       });
       const json = await res.json();
       if (json.success) {
-        showToast("success", "Layout তৈরি হয়েছে!");
+        showToast("success", "Layout created!");
         setCurrentLayout(json.data); prefillEditForm(json.data);
         setBuilderTab("process"); setView("builder");
       } else showToast("error", json.message);
@@ -878,7 +916,7 @@ export default function LineLayoutPage() {
   }
 
   function openPicker() {
-    if (!pForm.processName || !pForm.machineType) { showToast("error", "Process Name ও Machine Type select করুন।"); return; }
+    if (!pForm.processName || !pForm.machineType) { showToast("error", "Please select Process Name and Machine Type."); return; }
     if (pForm.machineType === "HELPER") { handleAddProcess([]); return; }
     setShowPicker(true);
   }
@@ -895,7 +933,7 @@ export default function LineLayoutPage() {
       const json = await res.json();
       if (json.success) {
         setCurrentLayout(json.data);
-        showToast("success", "Process যোগ হয়েছে!");
+        showToast("success", "Process added!");
         setPForm((p) => ({ ...p, serialNo: p.serialNo + 1, processName: "", machineType: "" }));
       } else showToast("error", json.message);
     } finally { setAddingProcess(false); }
@@ -908,7 +946,7 @@ export default function LineLayoutPage() {
       body: JSON.stringify({ action: "remove_process", processId, wasteFloor }),
     });
     const json = await res.json();
-    if (json.success) { setCurrentLayout(json.data); showToast("success", "Process waste হয়েছে।"); }
+    if (json.success) { setCurrentLayout(json.data); showToast("success", "Process wasted."); }
     else showToast("error", json.message);
   }
 
@@ -930,7 +968,7 @@ export default function LineLayoutPage() {
       const json = await res.json();
       if (json.success) { setCurrentLayout(json.data); }
       else showToast("error", json.message);
-    } catch { showToast("error", "Serial swap করতে সমস্যা হয়েছে।"); }
+    } catch { showToast("error", "Failed to swap serial."); }
   }
 
   async function handleMoveToSlot(fromId, newSerial) {
@@ -947,7 +985,7 @@ export default function LineLayoutPage() {
       const json = await res.json();
       if (json.success) { setCurrentLayout(json.data); }
       else showToast("error", json.message);
-    } catch { showToast("error", "Serial পরিবর্তন করতে সমস্যা হয়েছে।"); }
+    } catch { showToast("error", "Failed to update serial."); }
   }
 
   function handleSaveProcessEdit(e) {
@@ -974,7 +1012,7 @@ export default function LineLayoutPage() {
         }),
       });
       const json = await res.json();
-      if (json.success) { setCurrentLayout(json.data); setEditingProcess(null); showToast("success", "Process আপডেট হয়েছে!"); }
+      if (json.success) { setCurrentLayout(json.data); setEditingProcess(null); showToast("success", "Process updated!"); }
       else showToast("error", json.message);
     } finally { setProcEditSaving(false); }
   }
@@ -1000,9 +1038,45 @@ export default function LineLayoutPage() {
         }),
       });
       const json = await res.json();
-      if (json.success) { setCurrentLayout(json.data); prefillEditForm(json.data); showToast("success", "Header আপডেট হয়েছে!"); }
+      if (json.success) { setCurrentLayout(json.data); prefillEditForm(json.data); showToast("success", "Header updated!"); }
       else showToast("error", json.message);
     } finally { setEditSaving(false); setEditUploading(false); }
+  }
+
+  // ── Delete layout handler ──
+  async function handleDeleteLayout() {
+    if (!deleteTarget) return;
+    const allMachines = getAllMachines(deleteTarget);
+    // Validate: every machine must have a floor selected
+    const missing = allMachines.filter((m) => !machineFloors[m.serialNumber]);
+    if (missing.length > 0) {
+      showToast("error", `Please select a return floor for all ${missing.length} machine(s).`);
+      return;
+    }
+    setDeleting(true);
+    try {
+      // Build per-machine return list for the API
+      const machineReturns = allMachines.map((m) => ({
+        machineId:    m.machineId,
+        serialNumber: m.serialNumber,
+        returnFloor:  machineFloors[m.serialNumber],
+      }));
+      const res = await fetch(`/api/line-layouts/${deleteTarget._id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ machineReturns }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        showToast("success", "Layout deleted.");
+        setDeleteTarget(null);
+        setMachineFloors({});
+        // if we were in builder, go back to list
+        if (currentLayout?._id === deleteTarget._id) setCurrentLayout(null);
+        setView("list");
+        loadLayouts();
+      } else showToast("error", json.message);
+    } finally { setDeleting(false); }
   }
 
   return (
@@ -1014,6 +1088,136 @@ export default function LineLayoutPage() {
       }} className="font-sans text-slate-800">
 
         <Toast toast={toast} />
+
+        {/* Delete Layout Modal */}
+        {deleteTarget && (() => {
+          const allMachines = getAllMachines(deleteTarget);
+          const hasMachines = allMachines.length > 0;
+          const allFilled   = allMachines.every((m) => machineFloors[m.serialNumber]);
+
+          // "Apply all" bulk-floor setter
+          function applyAllFloors(floor) {
+            const next = { ...machineFloors };
+            allMachines.forEach((m) => { next[m.serialNumber] = floor; });
+            setMachineFloors(next);
+          }
+
+          return (
+            <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
+              <div className="bg-white border border-slate-300 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh]">
+                <div className="h-1 bg-gradient-to-r from-red-500 to-rose-600 rounded-t-2xl shrink-0" />
+
+                {/* Header */}
+                <div className="px-6 pt-5 pb-4 border-b border-slate-200 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 text-xl shrink-0">🗑</div>
+                    <div>
+                      <h3 className="font-black text-slate-900 text-lg">Delete Layout</h3>
+                      <p className="text-slate-500 text-sm">{deleteTarget.floor} · Line {deleteTarget.lineNo} — {deleteTarget.buyer}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Body */}
+                <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0">
+
+                  {/* Case A: no machines */}
+                  {!hasMachines ? (
+                    <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-600">
+                      This layout has <strong>{deleteTarget.processes?.length || 0} processes</strong> with no assigned machines. It will be permanently deleted.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                        <p className="text-sm font-bold text-amber-800 mb-0.5">⚠ {allMachines.length} machine(s) assigned — select return floor for each</p>
+                        <p className="text-xs text-amber-700">Each machine will be returned to Idle on its chosen floor.</p>
+                      </div>
+
+                      {/* Bulk apply row */}
+                      <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest shrink-0">Apply all →</span>
+                        <select
+                          defaultValue=""
+                          onChange={(e) => { if (e.target.value) applyAllFloors(e.target.value); }}
+                          className="flex-1 bg-white border border-slate-300 text-slate-700 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-red-400">
+                          <option value="">— Set all to same floor —</option>
+                          {FLOOR_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
+                        </select>
+                      </div>
+
+                      {/* Per-machine rows */}
+                      <div className="space-y-2">
+                        {allMachines.map((m) => {
+                          const c   = mc(m.machineType);
+                          const sel = machineFloors[m.serialNumber] || "";
+                          return (
+                            <div key={m.serialNumber}
+                              className="flex items-center gap-3 rounded-xl border px-3 py-2.5"
+                              style={{ background: c.bg, borderColor: `${c.accent}40` }}>
+
+                              {/* Serial badge */}
+                              <span className="font-mono font-black text-sm px-2.5 py-1 rounded-lg shrink-0"
+                                style={{ background: c.accent, color: "#fff" }}>{m.serialNumber}</span>
+
+                              {/* Info */}
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-bold truncate" style={{ color: c.text }}>{m.processName}</p>
+                                <p className="text-[10px] font-semibold opacity-70" style={{ color: c.accent }}>
+                                  {m.machineType} · was on <strong>{m.fromFloor || "—"}</strong>
+                                </p>
+                              </div>
+
+                              {/* Arrow */}
+                              <span className="text-slate-400 text-sm shrink-0">→</span>
+
+                              {/* Floor selector */}
+                              <select
+                                value={sel}
+                                onChange={(e) => setMachineFloors((prev) => ({ ...prev, [m.serialNumber]: e.target.value }))}
+                                className={`w-32 shrink-0 border rounded-lg px-2 py-1.5 text-sm focus:outline-none transition-colors
+                                  ${sel ? "bg-white border-emerald-400 text-emerald-700 font-bold" : "bg-white border-red-300 text-red-500 font-semibold"}`}>
+                                <option value="">— Floor —</option>
+                                {FLOOR_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
+                              </select>
+
+                              {/* Status dot */}
+                              <div className={`w-2 h-2 rounded-full shrink-0 ${sel ? "bg-emerald-400" : "bg-red-400"}`} />
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Progress summary */}
+                      <div className="flex items-center gap-2 text-xs">
+                        <div className="flex-1 bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                          <div className="bg-emerald-500 h-full rounded-full transition-all"
+                            style={{ width: `${allMachines.length ? (Object.values(machineFloors).filter(Boolean).length / allMachines.length) * 100 : 0}%` }} />
+                        </div>
+                        <span className="text-slate-500 font-semibold shrink-0">
+                          {Object.values(machineFloors).filter(Boolean).length}/{allMachines.length} assigned
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="px-6 pb-5 pt-3 border-t border-slate-200 shrink-0 flex gap-3">
+                  <button
+                    onClick={handleDeleteLayout}
+                    disabled={deleting || (hasMachines && !allFilled)}
+                    className="flex-1 bg-red-500 hover:bg-red-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all">
+                    {deleting ? "Deleting..." : "🗑 Confirm Delete"}
+                  </button>
+                  <button onClick={() => { setDeleteTarget(null); setMachineFloors({}); }}
+                    className="px-6 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {showAddPName && (
           <AddProcessNameModal onAdd={(name) => setProcessNames((prev) => [...prev, name].sort())} onClose={() => setShowAddPName(false)} />
@@ -1033,7 +1237,7 @@ export default function LineLayoutPage() {
               <div className="h-1 bg-gradient-to-r from-amber-400 to-orange-400 rounded-t-2xl" />
               <form onSubmit={handleSaveProcessEdit} className="p-6 space-y-4">
                 <div className="flex items-center justify-between mb-1">
-                  <h3 className="font-bold text-slate-800 text-lg">✏️ Process Edit করুন</h3>
+                  <h3 className="font-bold text-slate-800 text-lg">✏️ Edit Process</h3>
                   <button type="button" onClick={() => setEditingProcess(null)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
                 </div>
                 <LField label="Serial No">
@@ -1044,7 +1248,7 @@ export default function LineLayoutPage() {
                 </LField>
                 <LField label="Process Name">
                   <SearchableSelect value={editingProcess.processName} onChange={(v) => setEditingProcess((p) => ({ ...p, processName: v }))}
-                    options={processNames} placeholder="— Process select করুন —" />
+                    options={processNames} placeholder="— Select Process —" />
                 </LField>
                 <LField label="Machine Type">
                   <SearchableSelect value={editingProcess.machineType} onChange={(v) => setEditingProcess((p) => ({ ...p, machineType: v }))}
@@ -1055,16 +1259,16 @@ export default function LineLayoutPage() {
                   return <div className="rounded-lg px-4 py-2 border-l-4 text-sm font-bold" style={{ background: c.bg, borderLeftColor: c.accent, color: c.text }}>{editingProcess.machineType}</div>;
                 })()}
                 {editingProcess.machineType !== editingProcess.originalMachineType ? (
-                  <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">🔄 Machine type বদলেছে — পুরনো machines inventory তে ফিরে যাবে এবং নতুন serial select করতে হবে।</p>
+                  <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">🔄 Machine type changed — old machines will return to inventory and new serials must be selected.</p>
                 ) : (
-                  <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">Machine assignment অপরিবর্তিত। শুধু serial ও process name আপডেট হবে।</p>
+                  <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">Machine assignment unchanged. Only serial and process name will update.</p>
                 )}
                 <div className="flex gap-3 pt-1">
                   <button type="submit" disabled={procEditSaving || !editingProcess.processName || !editingProcess.machineType}
                     className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all">
-                    {procEditSaving ? "সেভ হচ্ছে..." : editingProcess.machineType !== editingProcess.originalMachineType && editingProcess.machineType !== "HELPER" ? "✓ পরবর্তী → Serial select করুন" : "✓ আপডেট করুন"}
+                    {procEditSaving ? "Saving..." : editingProcess.machineType !== editingProcess.originalMachineType && editingProcess.machineType !== "HELPER" ? "✓ Next → Select Serial" : "✓ Update"}
                   </button>
-                  <button type="button" onClick={() => setEditingProcess(null)} className="px-5 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">বাতিল</button>
+                  <button type="button" onClick={() => setEditingProcess(null)} className="px-5 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">Cancel</button>
                 </div>
               </form>
             </div>
@@ -1086,7 +1290,7 @@ export default function LineLayoutPage() {
                 <span className="text-sm text-slate-500 uppercase tracking-widest font-bold">Factory</span>
                 <select value={filterFactory} onChange={(e) => setFilterFactory(e.target.value)}
                   className="bg-white border border-slate-300 text-slate-700 text-base rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-                  <option value="">সব Factory</option>
+                  <option value="">All Factories</option>
                   {FACTORY_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
                 </select>
               </div>
@@ -1095,13 +1299,13 @@ export default function LineLayoutPage() {
             )}
             {view !== "list" && (
               <button onClick={() => setView("list")} className="px-4 py-2 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base font-semibold transition-all bg-white">
-                ← সব Layouts
+                ← All Layouts
               </button>
             )}
             {view === "list" && (
               <button onClick={() => { setView("form"); setForm({ floor:"", lineNo:"", buyer:"", style:"", item:"", smv:"", planEfficiency:"", operator:"", helper:"", seamSealing:"", workingHours:8 }); setSketchPreview(""); }}
                 className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-base transition-all shadow-sm">
-                + নতুন Layout
+                + New Layout
               </button>
             )}
             {view === "builder" && currentLayout && (
@@ -1110,10 +1314,16 @@ export default function LineLayoutPage() {
                 🖨 Print Layout
               </button>
             )}
+            {view === "builder" && currentLayout && (
+              <button onClick={() => openDeleteModal(currentLayout)}
+                className="px-4 py-2.5 bg-red-50 border border-red-200 hover:bg-red-500 hover:text-white hover:border-red-500 text-red-600 rounded-xl text-base font-bold transition-all">
+                🗑 Delete Layout
+              </button>
+            )}
             {view === "builder" && (
               <button onClick={() => { setView("list"); loadLayouts(); }}
                 className="px-5 py-2.5 bg-slate-600 hover:bg-slate-700 text-white font-bold rounded-xl text-base transition-all">
-                ✓ সম্পন্ন
+                ✓ Done
               </button>
             )}
           </div>
@@ -1125,59 +1335,70 @@ export default function LineLayoutPage() {
             <div className="flex flex-wrap gap-3 mb-5">
               <select value={filterFloor} onChange={(e) => setFilterFloor(e.target.value)}
                 className="bg-white border border-slate-300 text-slate-700 text-base rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-                <option value="">সব Floor</option>
+                <option value="">All Floors</option>
                 {FLOOR_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
               </select>
               <select value={filterLine} onChange={(e) => setFilterLine(e.target.value)}
                 className="bg-white border border-slate-300 text-slate-700 text-base rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500">
-                <option value="">সব Line</option>
+                <option value="">All Lines</option>
                 {LINE_OPTIONS.map((l) => <option key={l} value={l}>Line {l}</option>)}
               </select>
             </div>
             {listLoading ? (
-              <p className="text-slate-400 text-base animate-pulse text-center py-20">লোড হচ্ছে...</p>
+              <p className="text-slate-400 text-base animate-pulse text-center py-20">Loading...</p>
             ) : layouts.length === 0 ? (
               <div className="text-center py-20 text-slate-400">
                 <p className="text-5xl mb-3">📐</p>
-                <p className="text-base">কোনো Layout নেই। নতুন তৈরি করুন।</p>
+                <p className="text-base">No layouts found. Create a new one.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {layouts.map((l) => (
-                  <div key={l._id} className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-blue-300 hover:shadow-md transition-all">
-                    <div className="h-1.5 bg-gradient-to-r from-blue-600 via-blue-400 to-violet-500" />
-                    <div className="p-5">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          {l.factory && <span className="text-xs bg-blue-50 border border-blue-200 text-blue-600 px-2 py-0.5 rounded-full font-bold mr-1">🏭 {l.factory}</span>}
-                          <div className="text-base text-blue-600 font-bold mt-1">{l.floor} · Line {l.lineNo}</div>
-                          <h3 className="font-black text-slate-900 text-lg mt-0.5">{l.buyer}</h3>
-                          <p className="text-slate-500 text-base">{l.style} — {l.item}</p>
-                        </div>
-                        <span className="text-sm bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-semibold">{l.processes?.length || 0} process</span>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2 text-center mb-4">
-                        {[
-                          { label:"SMV",        val: l.smv,                  color:"text-slate-700"   },
-                          { label:"Efficiency", val: `${l.planEfficiency}%`, color:"text-blue-700"    },
-                          { label:"Manpower",   val: l.manpower,             color:"text-slate-700"   },
-                          { label:"1Hr Target", val: l.oneHourTarget,        color:"text-emerald-700" },
-                          { label:`Daily (${l.workingHours}h)`, val: l.dailyTarget, color:"text-violet-700" },
-                          { label:"Op/Hel/SS",  val: `${l.operator}/${l.helper}/${l.seamSealing}`, color:"text-slate-700" },
-                        ].map(({ label, val, color }) => (
-                          <div key={label} className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-2">
-                            <div className="text-xs font-bold uppercase text-slate-400">{label}</div>
-                            <div className={`text-base font-black ${color}`}>{val}</div>
+                {layouts.map((l) => {
+                  // FIX-1: compute live targets for list cards too
+                  const live = calcTargets(l.smv, l.planEfficiency, l.operator, l.helper, l.seamSealing, l.workingHours);
+                  return (
+                    <div key={l._id} className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-blue-300 hover:shadow-md transition-all">
+                      <div className="h-1.5 bg-gradient-to-r from-blue-600 via-blue-400 to-violet-500" />
+                      <div className="p-5">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            {l.factory && <span className="text-xs bg-blue-50 border border-blue-200 text-blue-600 px-2 py-0.5 rounded-full font-bold mr-1">🏭 {l.factory}</span>}
+                            <div className="text-base text-blue-600 font-bold mt-1">{l.floor} · Line {l.lineNo}</div>
+                            <h3 className="font-black text-slate-900 text-lg mt-0.5">{l.buyer}</h3>
+                            <p className="text-slate-500 text-base">{l.style} — {l.item}</p>
                           </div>
-                        ))}
+                          <span className="text-sm bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-semibold">{l.processes?.length || 0} process</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-center mb-4">
+                          {[
+                            { label:"SMV",        val: l.smv,                  color:"text-slate-700"   },
+                            { label:"Efficiency", val: `${l.planEfficiency}%`, color:"text-blue-700"    },
+                            { label:"Manpower",   val: live.manpower,          color:"text-slate-700"   },
+                            { label:"1Hr Target", val: live.oneHourTarget,     color:"text-emerald-700" },
+                            { label:`Daily (${l.workingHours}h)`, val: live.dailyTarget, color:"text-violet-700" },
+                            { label:"Op/Hel/SS",  val: `${l.operator}/${l.helper}/${l.seamSealing}`, color:"text-slate-700" },
+                          ].map(({ label, val, color }) => (
+                            <div key={label} className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-2">
+                              <div className="text-xs font-bold uppercase text-slate-400">{label}</div>
+                              <div className={`text-base font-black ${color}`}>{val}</div>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => { setCurrentLayout(l); prefillEditForm(l); setBuilderTab("process"); setView("builder"); }}
+                            className="flex-1 py-3 bg-blue-50 border border-blue-200 hover:bg-blue-600 hover:text-white hover:border-blue-600 text-blue-700 rounded-xl text-base font-bold transition-all">
+                            Open Builder →
+                          </button>
+                          <button onClick={() => openDeleteModal(l)}
+                            className="px-4 py-3 bg-red-50 border border-red-200 hover:bg-red-500 hover:text-white hover:border-red-500 text-red-600 rounded-xl text-base font-bold transition-all"
+                            title="Delete layout">
+                            🗑
+                          </button>
+                        </div>
                       </div>
-                      <button onClick={() => { setCurrentLayout(l); prefillEditForm(l); setBuilderTab("process"); setView("builder"); }}
-                        className="w-full py-3 bg-blue-50 border border-blue-200 hover:bg-blue-600 hover:text-white hover:border-blue-600 text-blue-700 rounded-xl text-base font-bold transition-all">
-                        Builder খুলুন →
-                      </button>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1190,7 +1411,7 @@ export default function LineLayoutPage() {
               <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
                 <div className="h-1.5 bg-gradient-to-r from-blue-600 via-blue-400 to-violet-500" />
                 <div className="p-8 space-y-5">
-                  <h2 className="text-2xl font-black text-slate-900 mb-1">নতুন Line Layout তৈরি করুন</h2>
+                  <h2 className="text-2xl font-black text-slate-900 mb-1">Create New Line Layout</h2>
                   <div className="grid grid-cols-2 gap-4">
                     <LField label="Floor *"><LSelect value={form.floor} onChange={(v) => setForm((p) => ({ ...p, floor:v }))} options={FLOOR_OPTIONS} placeholder="— Floor —" /></LField>
                     <LField label="Line No *"><LSelect value={form.lineNo} onChange={(v) => setForm((p) => ({ ...p, lineNo:v }))} options={LINE_OPTIONS} placeholder="— Line —" renderOption={(o) => `Line ${o}`} /></LField>
@@ -1208,7 +1429,7 @@ export default function LineLayoutPage() {
                     <LField label="Working Hours">
                       <select value={form.workingHours} onChange={(e) => setForm((p) => ({ ...p, workingHours:+e.target.value }))}
                         className="w-full bg-white border border-slate-300 text-slate-700 rounded-lg px-3 py-3 text-base focus:outline-none focus:border-blue-500">
-                        {HOURS_OPTIONS.map((h) => <option key={h} value={h}>{h} ঘণ্টা</option>)}
+                        {HOURS_OPTIONS.map((h) => <option key={h} value={h}>{h} hrs</option>)}
                       </select>
                     </LField>
                     <LField label="Manpower (auto)">
@@ -1241,7 +1462,7 @@ export default function LineLayoutPage() {
                       className="border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-xl p-5 cursor-pointer transition-all text-center bg-slate-50">
                       {sketchPreview
                         ? <img src={sketchPreview} alt="sketch" className="max-h-36 mx-auto rounded-lg object-contain" />
-                        : <p className="text-slate-400 text-base">ক্লিক করে image select করুন</p>}
+                        : <p className="text-slate-400 text-base">Click to select an image</p>}
                       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleSketchChange} />
                     </div>
                   </LField>
@@ -1249,7 +1470,7 @@ export default function LineLayoutPage() {
                 <div className="px-8 pb-8">
                   <button type="submit" disabled={saving || uploading}
                     className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-4 rounded-xl text-base tracking-widest uppercase transition-all shadow-sm">
-                    {uploading ? "Image আপলোড হচ্ছে..." : saving ? "তৈরি হচ্ছে..." : "Layout তৈরি করুন →"}
+                    {uploading ? "Uploading image..." : saving ? "Creating..." : "Create Layout →"}
                   </button>
                 </div>
               </div>
@@ -1278,9 +1499,9 @@ export default function LineLayoutPage() {
                     <span className="text-base text-blue-700 font-black">{currentLayout.floor} · Line {currentLayout.lineNo}</span>
                     <div className="grid grid-cols-3 gap-1.5 text-center mt-2">
                       {[
-                        { l:"1Hr Tgt", v: currentLayout.oneHourTarget, c:"text-emerald-700" },
-                        { l:`Daily(${currentLayout.workingHours}h)`, v: currentLayout.dailyTarget, c:"text-violet-700" },
-                        { l:"Manpower", v: currentLayout.manpower, c:"text-blue-700" },
+                        { l:"1Hr Tgt", v: calcTargets(currentLayout.smv, currentLayout.planEfficiency, currentLayout.operator, currentLayout.helper, currentLayout.seamSealing, currentLayout.workingHours).oneHourTarget, c:"text-emerald-700" },
+                        { l:`Daily(${currentLayout.workingHours}h)`, v: calcTargets(currentLayout.smv, currentLayout.planEfficiency, currentLayout.operator, currentLayout.helper, currentLayout.seamSealing, currentLayout.workingHours).dailyTarget, c:"text-violet-700" },
+                        { l:"Manpower", v: calcTargets(currentLayout.smv, currentLayout.planEfficiency, currentLayout.operator, currentLayout.helper, currentLayout.seamSealing, currentLayout.workingHours).manpower, c:"text-blue-700" },
                       ].map(({ l, v, c }) => (
                         <div key={l} className="bg-white border border-slate-200 rounded-lg px-2 py-2">
                           <div className="text-xs text-slate-400 font-medium">{l}</div>
@@ -1290,7 +1511,7 @@ export default function LineLayoutPage() {
                     </div>
                   </div>
                   <form onSubmit={handleUpdateHeader} className="p-4 space-y-4">
-                    <p className="text-sm text-amber-600 uppercase tracking-widest font-bold">Style পরিবর্তন করুন</p>
+                    <p className="text-sm text-amber-600 uppercase tracking-widest font-bold">Update Style Info</p>
                     <div className="grid grid-cols-2 gap-3">
                       <LField label="Buyer"><LSelect value={editForm.buyer} onChange={(v) => setEditForm((p) => ({ ...p, buyer:v }))} options={BUYER_OPTIONS} placeholder="— Buyer —" /></LField>
                       <LField label="Style"><LInput value={editForm.style} onChange={(v) => setEditForm((p) => ({ ...p, style:v }))} placeholder="Style No" /></LField>
@@ -1308,7 +1529,7 @@ export default function LineLayoutPage() {
                     <LField label="Working Hours">
                       <select value={editForm.workingHours} onChange={(e) => setEditForm((p) => ({ ...p, workingHours:+e.target.value }))}
                         className="w-full bg-white border border-slate-300 text-slate-700 rounded-lg px-3 py-3 text-base focus:outline-none focus:border-blue-500">
-                        {HOURS_OPTIONS.map((h) => <option key={h} value={h}>{h} ঘণ্টা</option>)}
+                        {HOURS_OPTIONS.map((h) => <option key={h} value={h}>{h} hrs</option>)}
                       </select>
                     </LField>
                     <LField label="Line Sketch / Image">
@@ -1323,13 +1544,13 @@ export default function LineLayoutPage() {
                         )}
                         <div onClick={() => editFileRef.current?.click()}
                           className="border-2 border-dashed border-slate-300 hover:border-amber-400 rounded-xl p-3 cursor-pointer transition-all text-center bg-slate-50">
-                          <p className="text-slate-400 text-sm">{editSketchPreview || editForm.sketchUrl ? "🔄 নতুন image দিয়ে replace করুন" : "📎 ক্লিক করে image select করুন"}</p>
+                          <p className="text-slate-400 text-sm">{editSketchPreview || editForm.sketchUrl ? "🔄 Replace with new image" : "📎 Click to select image"}</p>
                           <input ref={editFileRef} type="file" accept="image/*" className="hidden" onChange={handleEditSketchChange} />
                         </div>
                       </div>
                     </LField>
                     <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                      <p className="text-xs text-slate-400 uppercase tracking-widest mb-1 font-semibold">নতুন Target Preview</p>
+                      <p className="text-xs text-slate-400 uppercase tracking-widest mb-1 font-semibold">New Target Preview</p>
                       <p className="text-[10px] text-slate-500 mb-2 font-mono">({editTargets.manpower} × {editForm.workingHours}h × 60 / {editForm.smv || "SMV"}) × {editForm.planEfficiency || 0}%</p>
                       <div className="grid grid-cols-3 gap-2 text-center">
                         {[
@@ -1346,7 +1567,7 @@ export default function LineLayoutPage() {
                     </div>
                     <button type="submit" disabled={editSaving || editUploading}
                       className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-3 rounded-xl text-base uppercase tracking-widest transition-all">
-                      {editUploading ? "Image আপলোড হচ্ছে..." : editSaving ? "আপডেট হচ্ছে..." : "✓ Header আপডেট করুন"}
+                      {editUploading ? "Uploading image..." : editSaving ? "Updating..." : "✓ Update Header"}
                     </button>
                   </form>
                 </div>
@@ -1355,7 +1576,7 @@ export default function LineLayoutPage() {
               {/* TAB: ADD PROCESS */}
               {builderTab === "process" && (
                 <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-4">
-                  <p className="text-sm text-slate-500 uppercase tracking-widest font-bold">Process যোগ করুন</p>
+                  <p className="text-sm text-slate-500 uppercase tracking-widest font-bold">Add Process</p>
                   <LField label="Serial No">
                     <select value={pForm.serialNo} onChange={(e) => setPForm((p) => ({ ...p, serialNo:+e.target.value }))}
                       className="w-full bg-white border border-slate-300 text-slate-700 rounded-lg px-3 py-3 text-base focus:outline-none focus:border-blue-500">
@@ -1366,9 +1587,9 @@ export default function LineLayoutPage() {
                     <div className="flex gap-2">
                       <div className="flex-1">
                         <SearchableSelect value={pForm.processName} onChange={(v) => setPForm((p) => ({ ...p, processName:v }))}
-                          options={loadingPNames ? [] : processNames} placeholder={loadingPNames ? "লোড হচ্ছে..." : "— Process select করুন —"} />
+                          options={loadingPNames ? [] : processNames} placeholder={loadingPNames ? "Loading..." : "— Select Process —"} />
                       </div>
-                      <button type="button" onClick={() => setShowAddPName(true)} title="নতুন process name যোগ করুন"
+                      <button type="button" onClick={() => setShowAddPName(true)} title="Add new process name"
                         className="px-3 py-3 bg-blue-50 border border-blue-300 hover:bg-blue-100 text-blue-600 rounded-lg text-base font-bold transition-all shrink-0">+</button>
                     </div>
                   </LField>
@@ -1382,7 +1603,7 @@ export default function LineLayoutPage() {
                   })()}
                   <button onClick={openPicker} disabled={addingProcess || !pForm.processName || !pForm.machineType}
                     className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-3.5 rounded-xl text-base uppercase tracking-wider transition-all shadow-sm">
-                    {addingProcess ? "যোগ হচ্ছে..." : pForm.machineType === "HELPER" ? "+ HELPER যোগ করুন" : "+ Serial select করে যোগ করুন"}
+                    {addingProcess ? "Adding..." : pForm.machineType === "HELPER" ? "+ Add HELPER" : "+ Select Serial & Add"}
                   </button>
                 </div>
               )}
@@ -1392,7 +1613,7 @@ export default function LineLayoutPage() {
                 <div className="flex-1 overflow-y-auto min-h-0 p-4">
                   <p className="text-sm text-slate-400 uppercase tracking-widest mb-3 font-bold">Added Processes ({currentLayout.processes?.length || 0})</p>
                   {(currentLayout.processes?.length || 0) === 0 ? (
-                    <p className="text-slate-400 text-base text-center py-10">কোনো process নেই।</p>
+                    <p className="text-slate-400 text-base text-center py-10">No processes added.</p>
                   ) : (
                     <div className="space-y-2">
                       {[...currentLayout.processes].sort((a, b) => a.serialNo - b.serialNo).map((p) => {
@@ -1445,10 +1666,10 @@ export default function LineLayoutPage() {
                 </div>
                 <div className="flex gap-2 text-sm">
                   {[
-                    { l:"Buyer", v: currentLayout.buyer,        c:"text-blue-700"    },
-                    { l:"1Hr",   v: currentLayout.oneHourTarget, c:"text-emerald-700" },
-                    { l:"Daily", v: currentLayout.dailyTarget,   c:"text-violet-700"  },
-                    { l:"MP",    v: currentLayout.manpower,      c:"text-amber-700"   },
+                    { l:"Buyer", v: currentLayout.buyer,                                                   c:"text-blue-700"    },
+                    { l:"1Hr",   v: calcTargets(currentLayout.smv, currentLayout.planEfficiency, currentLayout.operator, currentLayout.helper, currentLayout.seamSealing, currentLayout.workingHours).oneHourTarget, c:"text-emerald-700" },
+                    { l:"Daily", v: calcTargets(currentLayout.smv, currentLayout.planEfficiency, currentLayout.operator, currentLayout.helper, currentLayout.seamSealing, currentLayout.workingHours).dailyTarget,   c:"text-violet-700"  },
+                    { l:"MP",    v: calcTargets(currentLayout.smv, currentLayout.planEfficiency, currentLayout.operator, currentLayout.helper, currentLayout.seamSealing, currentLayout.workingHours).manpower,      c:"text-amber-700"   },
                   ].map(({ l, v, c }) => (
                     <span key={l} className="bg-white border border-slate-200 px-3 py-1 rounded-full">
                       <span className="text-slate-400">{l}: </span>
@@ -1472,11 +1693,10 @@ export default function LineLayoutPage() {
           </div>
         )}
       </div>
-
-
     </div>
   );
 }
+
 function LField({ label, children }) {
   return (
     <div>

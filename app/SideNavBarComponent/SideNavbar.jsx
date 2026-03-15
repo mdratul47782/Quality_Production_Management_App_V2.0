@@ -16,13 +16,54 @@ import {
   Table2,
   GitCompare,
   FileText,
-  Factory,
   PanelLeftRightDashed,
   ChevronRight,
 } from "lucide-react";
 
 const COLLAPSED_W = 56;
 const EXPANDED_W  = 220;
+
+// ── Excel SVG Icon ─────────────────────────────────────────────────────────
+function ExcelIcon({ size = 16, className = "" }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <rect x="2" y="3" width="14" height="18" rx="2" fill="#1D6F42" />
+      <rect x="10" y="3" width="12" height="18" rx="2" fill="#21A366" />
+      <rect x="9" y="3" width="7" height="18" rx="1" fill="#107C41" />
+      <path d="M5.5 8.5L8.5 15.5M8.5 8.5L5.5 15.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="12" y1="8" x2="19" y2="8" stroke="white" strokeWidth="1" strokeLinecap="round" opacity="0.8" />
+      <line x1="12" y1="11" x2="19" y2="11" stroke="white" strokeWidth="1" strokeLinecap="round" opacity="0.8" />
+      <line x1="12" y1="14" x2="19" y2="14" stroke="white" strokeWidth="1" strokeLinecap="round" opacity="0.8" />
+      <line x1="12" y1="17" x2="19" y2="17" stroke="white" strokeWidth="1" strokeLinecap="round" opacity="0.8" />
+    </svg>
+  );
+}
+
+// ── Colorful icon wrapper ──────────────────────────────────────────────────
+// Maps each nav label to a color class
+const ICON_COLORS = {
+  "Floor Dashboard":          "text-sky-400",
+  "Floor Summary":            "text-violet-400",
+  "Floor Compare":            "text-fuchsia-400",
+  "Management View":          "text-violet-400",
+  "Production":               "text-amber-400",
+  "Production Input":         "text-amber-400",
+  "Quality":                  "text-rose-400",
+  "Quality Input":            "text-rose-400",
+  "Quality Summary Table":    "text-pink-400",
+  "Style Media Register":     "text-cyan-400",
+  "Maintenance Department":   "text-green-400",
+  "Machine Inventory":        "text-green-400",
+  "IE Department":            "text-orange-400",
+  "Line Layout":              "text-orange-400",
+};
 
 // ── Nav structure ──────────────────────────────────────────────────────────
 const NAV_GROUPS = [
@@ -69,10 +110,10 @@ const NAV_GROUPS = [
   },
   {
     label: "Maintenance Department",
-    icon: Factory,
+    icon: ExcelIcon,           // Excel icon for the group
     group: "maintenance",
     children: [
-      { label: "Machine Inventory", href: "/IEDepartment/MachineInventory", icon: Factory },
+      { label: "Machine Inventory", href: "/IEDepartment/MachineInventory", icon: ExcelIcon },
     ],
   },
   {
@@ -102,8 +143,15 @@ function getAllowedGroups(role, trackerType) {
 
 function ActiveDot() {
   return (
-    <span className="ml-auto h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)] shrink-0" />
+    <span className="ml-auto h-1.5 w-1.5 rounded-full bg-sky-400 shadow-[0_0_6px_rgba(56,189,248,0.9)] shrink-0" />
   );
+}
+
+// Renders an icon — handles both Lucide components and custom SVG components
+function NavIcon({ icon: Icon, label, size = 16, className = "" }) {
+  const colorClass = ICON_COLORS[label] || "text-slate-400";
+  const combined   = `shrink-0 ${colorClass} ${className}`;
+  return <Icon size={size} className={combined} />;
 }
 
 export default function SideNavbar() {
@@ -122,7 +170,6 @@ export default function SideNavbar() {
     );
   }, [expanded]);
 
-  // Set initial value immediately on mount (before first paint)
   useEffect(() => {
     document.documentElement.style.setProperty("--sidebar-w", `${COLLAPSED_W}px`);
   }, []);
@@ -163,7 +210,6 @@ export default function SideNavbar() {
     }
   }
 
-  // Shared transition style for text/labels sliding in/out
   function fadeSlide(show) {
     return {
       opacity: show ? 1 : 0,
@@ -184,8 +230,6 @@ export default function SideNavbar() {
     >
       {/* ── Header ── */}
       <div className="flex flex-col items-center shrink-0 border-b border-slate-800/60 py-2 px-2 gap-2">
-
-        {/* Row: logo + (when expanded) app name + collapse arrow */}
         <div className="flex items-center w-full gap-2">
           <Link href="/" className="shrink-0" onClick={(e) => e.stopPropagation()}>
             <div className="h-9 w-9 rounded-xl bg-white flex items-center justify-center overflow-hidden shadow-[0_0_18px_rgba(15,23,42,0.9)]">
@@ -200,23 +244,20 @@ export default function SideNavbar() {
             </div>
           </Link>
 
-          {/* Expanded: title + collapse arrow */}
-          {/* Expanded: title + collapse arrow */}
-<div style={fadeSlide(expanded)} className="flex items-center justify-between flex-1 min-w-0">
-  <span className="text-[9px] font-extrabold text-slate-100 tracking-widest uppercase leading-tight max-w-[120px] whitespace-normal">
-    HKD Outdoor Innovations ltd.
-  </span>
-  <button
-    onClick={() => setExpanded(false)}
-    className="h-7 w-7 flex-shrink-0 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
-    aria-label="Collapse sidebar"
-  >
-    <ChevronRight size={15} className="rotate-180" />
-  </button>
-</div>
+          <div style={fadeSlide(expanded)} className="flex items-center justify-between flex-1 min-w-0">
+            <span className="text-[9px] font-extrabold text-slate-100 tracking-widest uppercase leading-tight max-w-[120px] whitespace-normal">
+              HKD Outdoor Innovations ltd.
+            </span>
+            <button
+              onClick={() => setExpanded(false)}
+              className="h-7 w-7 flex-shrink-0 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
+              aria-label="Collapse sidebar"
+            >
+              <ChevronRight size={15} className="rotate-180" />
+            </button>
+          </div>
         </div>
 
-        {/* Hamburger sits below the logo, centered in collapsed width */}
         <button
           onClick={() => setExpanded((v) => !v)}
           className="flex items-center justify-center h-7 w-9 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-slate-800 transition-colors"
@@ -228,7 +269,6 @@ export default function SideNavbar() {
             <span className="block h-[2px] w-[18px] bg-current rounded-full" />
           </div>
         </button>
-
       </div>
 
       {/* ── Nav items ── */}
@@ -236,14 +276,13 @@ export default function SideNavbar() {
         {NAV_GROUPS.map((navGroup) => {
           const allowed = allowedGroups.includes(navGroup.group);
           const active  = isGroupActive(navGroup);
-          const isOpen  = openGroups[navGroup.label] ?? active; // auto-open active group
+          const isOpen  = openGroups[navGroup.label] ?? active;
           const hasKids = navGroup.children && navGroup.children.length > 0;
-          const Icon    = navGroup.icon;
 
           const itemCls = [
             "flex items-center gap-2.5 h-9 rounded-xl px-2 transition-all duration-150 group relative w-full",
             active && allowed
-              ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+              ? "bg-sky-500/15 text-sky-300 border border-sky-500/30"
               : allowed
                 ? "text-slate-400 hover:text-slate-100 hover:bg-slate-800/70 border border-transparent"
                 : "text-slate-600 opacity-40 cursor-default border border-transparent",
@@ -255,7 +294,6 @@ export default function SideNavbar() {
             </span>
           );
 
-          // Tooltip shown only when collapsed
           const tooltipEl = !expanded && (
             <div className="pointer-events-none absolute left-[52px] top-1/2 -translate-y-1/2 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
               <div className="bg-slate-800 border border-slate-700 text-slate-100 text-[10px] font-bold px-2 py-1 rounded-lg whitespace-nowrap shadow-xl">
@@ -273,7 +311,7 @@ export default function SideNavbar() {
                 onClick={(e) => handleProtectedClick(e, navGroup.group)}
                 className={itemCls}
               >
-                <Icon size={16} className="shrink-0" />
+                <NavIcon icon={navGroup.icon} label={navGroup.label} size={16} />
                 {labelEl}
                 {active && allowed && expanded && <ActiveDot />}
                 {tooltipEl}
@@ -287,18 +325,17 @@ export default function SideNavbar() {
               <button
                 onClick={() => {
                   if (!allowed) { router.push("/login"); return; }
-                  // If collapsed, expand first; if expanded, toggle folder
                   if (!expanded) setExpanded(true);
                   else toggleGroup(navGroup.label);
                 }}
                 className={itemCls}
               >
-                <Icon size={16} className="shrink-0" />
+                <NavIcon icon={navGroup.icon} label={navGroup.label} size={16} />
                 {labelEl}
                 {expanded && allowed && (
                   <ChevronRight
                     size={13}
-                    className={`shrink-0 transition-transform duration-200 ${isOpen ? "rotate-90" : ""}`}
+                    className={`shrink-0 transition-transform duration-200 text-slate-500 ${isOpen ? "rotate-90" : ""}`}
                   />
                 )}
                 {tooltipEl}
@@ -316,7 +353,6 @@ export default function SideNavbar() {
                 <div className="ml-3 pl-3 border-l border-slate-700/50 mt-0.5 mb-1 space-y-0.5">
                   {navGroup.children.map((child) => {
                     const childActive = pathname === child.href || pathname.startsWith(child.href + "/");
-                    const ChildIcon   = child.icon;
                     return (
                       <Link
                         key={child.href}
@@ -325,11 +361,11 @@ export default function SideNavbar() {
                         className={[
                           "flex items-center gap-2 h-8 rounded-lg px-2 transition-all duration-150",
                           childActive
-                            ? "bg-emerald-500/20 text-emerald-300 font-extrabold"
+                            ? "bg-sky-500/20 text-sky-300 font-extrabold"
                             : "text-slate-400 hover:text-slate-100 hover:bg-slate-800/60 font-bold",
                         ].join(" ")}
                       >
-                        <ChildIcon size={13} className="shrink-0 opacity-70" />
+                        <NavIcon icon={child.icon} label={child.label} size={13} className="opacity-90" />
                         <span className="text-[11px] whitespace-nowrap">{child.label}</span>
                         {childActive && <ActiveDot />}
                       </Link>
@@ -354,7 +390,6 @@ export default function SideNavbar() {
               <span className="text-[9px] text-slate-400 truncate leading-tight">{roleLabel}</span>
             </div>
 
-            {/* User tooltip when collapsed */}
             {!expanded && (
               <div className="pointer-events-none absolute left-[52px] bottom-0 z-50 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
                 <div className="rounded-xl border border-white/10 bg-slate-900/95 shadow-xl overflow-hidden min-w-[160px]">
