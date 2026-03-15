@@ -64,7 +64,6 @@ function openPrintWindow(layout) {
 
   const procs = [...(layout.processes || [])].sort((a, b) => a.serialNo - b.serialNo);
 
-  // Group by serialNo — same serialNo → stacked in one print cell
   const bySn = {};
   procs.forEach((p) => {
     if (!bySn[p.serialNo]) bySn[p.serialNo] = [];
@@ -105,44 +104,31 @@ function openPrintWindow(layout) {
       <td style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 2px;font-size:6px">${esc(v2)}</td>
     </tr>`).join("");
 
-  // ── CHANGE 1: cellHtml now accepts an array of process entries (same serialNo).
-  //    Single entry → renders exactly as before.
-  //    Multiple entries → stacks processName + machineType with dashed dividers in one cell.
-  function cellHtml(entries) {
-    if (!entries || entries.length === 0) {
-      return `
-        <td style="border:1px solid #000;padding:1px 2px"></td>
-        <td style="border:1px solid #000;padding:1px 2px"></td>
-        <td style="border:1px solid #000;padding:1px 2px"></td>`;
-    }
-    if (entries.length === 1) {
-      const e = entries[0];
-      return `
-        <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6px;padding:1px 2px">${esc(e.serialNo)}</td>
-        <td style="border:1px solid #000;font-weight:bold;font-size:6px;padding:1px 2px;white-space:normal">${esc(e.processName)}</td>
-        <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:5.5px;padding:1px 2px;white-space:normal;line-height:1.1">${esc(e.machineType ?? "")}</td>`;
-    }
-    // Multiple entries with same serialNo — stack with dashed separator
-    const pStack = entries.map((e, i) =>
-      `<div style="font-size:5.5px;font-weight:bold;line-height:1.3;white-space:normal;${i > 0 ? "border-top:1px dashed #aaa;margin-top:1px;padding-top:1px;" : ""}">${esc(e.processName)}</div>`
-    ).join("");
-    const mStack = entries.map((e, i) =>
-      `<div style="font-size:5px;line-height:1.2;${i > 0 ? "border-top:1px dashed #aaa;margin-top:1px;padding-top:1px;" : ""}">${esc(e.machineType ?? "")}</div>`
-    ).join("");
+  function cellHtml(e) {
+    if (!e) return `
+      <td style="border:1px solid #000;padding:1px 2px"></td>
+      <td style="border:1px solid #000;padding:1px 2px"></td>
+      <td style="border:1px solid #000;padding:1px 2px"></td>`;
     return `
-      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6px;padding:1px 2px;vertical-align:top">${esc(entries[0].serialNo)}</td>
-      <td style="border:1px solid #000;padding:1px 2px;vertical-align:top">${pStack}</td>
-      <td style="border:1px solid #000;text-align:center;padding:1px 2px;vertical-align:top">${mStack}</td>`;
+      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6px;padding:1px 2px">${esc(e.serialNo)}</td>
+      <td style="border:1px solid #000;font-weight:bold;font-size:6px;padding:1px 2px;white-space:normal">${esc(e.processName)}</td>
+      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:5.5px;padding:1px 2px;white-space:normal;line-height:1.1">${esc(e.machineType ?? "")}</td>`;
   }
 
-  // pairs now pass arrays (bySn[sn] is already an array, null for empty slots)
   const processRows = pairs.map(({ L, R }) => {
-    return `<tr style="height:14px">
-      ${cellHtml(L)}
-      <td style="border:none;width:2px"></td>
-      ${cellHtml(R)}
-      <td style="border:none;width:2px"></td>
-    </tr>`;
+    const la = L || [];
+    const ra = R || [];
+    const n  = Math.max(la.length, ra.length);
+    let html = "";
+    for (let i = 0; i < n; i++) {
+      html += `<tr style="height:14px">
+        ${cellHtml(la[i] ?? null)}
+        <td style="border:none;width:2px"></td>
+        ${cellHtml(ra[i] ?? null)}
+        <td style="border:none;width:2px"></td>
+      </tr>`;
+    }
+    return html;
   }).join("");
 
   const machRows = Object.entries(machSummary).map(([m, q]) =>
@@ -546,11 +532,8 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
   const dragId = useRef(null);
 
   const sorted = [...processes].sort((a, b) => a.serialNo - b.serialNo);
-
-  // Group by serialNo — same serialNo → one visual cell
   const bySerial = {};
   sorted.forEach((p) => { if (!bySerial[p.serialNo]) bySerial[p.serialNo] = []; bySerial[p.serialNo].push(p); });
-
   const maxSerial = sorted.length > 0 ? sorted[sorted.length - 1].serialNo : 0;
   const allSlots  = Array.from({ length: maxSerial }, (_, i) => i + 1);
 
@@ -570,21 +553,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
 
   const summary = {};
   sorted.forEach((p) => { const key = p.machineType || "?"; summary[key] = (summary[key] || 0) + (p.machines?.length || 1); });
-
-  // ── Duplicate serial detection ──────────────────────────────────────────────
-  const serialProcessMap = {};
-  sorted.forEach((p) => {
-    (p.machines || []).forEach((m) => {
-      if (!m.serialNumber) return;
-      if (!serialProcessMap[m.serialNumber]) serialProcessMap[m.serialNumber] = [];
-      serialProcessMap[m.serialNumber].push(p._id);
-    });
-  });
-  const duplicateSerials = new Set(
-    Object.entries(serialProcessMap)
-      .filter(([, ids]) => ids.length > 1)
-      .map(([sn]) => sn)
-  );
 
   function handleDragStart(e, id)     { dragId.current = id; e.dataTransfer.effectAllowed = "move"; }
   function handleDragOverCell(e, key) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverKey(key); }
@@ -609,144 +577,69 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
     onMoveToSlot(fromId, slotSerial);
   }
 
-  // ── CHANGE 2: GroupedCell replaces ProcessCell + EmptySlot ─────────────────
-  // All processes sharing the same serialNo render inside ONE div.
-  // Each entry is separated by a dashed border. Each has its own waste button.
-  function GroupedCell({ serialNo }) {
-    const entries = bySerial[serialNo];
-    const key     = `sn:${serialNo}`;
-    const isOver  = dragOverKey === key;
-
-    if (!entries) {
-      // Empty slot — same as original EmptySlot, just with key/drop target changed
-      return (
-        <div
-          onDragOver={(e) => handleDragOverCell(e, key)}
-          onDragLeave={handleDragLeave}
-          onDrop={(e) => handleDropOnSlot(e, serialNo)}
-          style={{
-            minHeight: 54, borderRadius: 4, marginBottom: 3,
-            border: isOver ? "2px dashed #1d4ed8" : "2px dashed #cbd5e1",
-            background: isOver ? "#eff6ff" : "transparent",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            transition: "border-color 0.1s, background 0.1s",
-          }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: isOver ? "#1d4ed8" : "#94a3b8", letterSpacing: "0.05em" }}>
-            {isOver ? `▼ Drop at slot ${serialNo}` : `# ${serialNo} — Empty`}
-          </span>
-        </div>
-      );
-    }
-
-    const c = mc(entries[0].machineType);
-
+  function ProcessCell({ entry }) {
+    const c      = mc(entry.machineType);
+    const key    = `id:${entry._id}`;
+    const isOver = dragOverKey === key;
+    const serials = (entry.machines || []).filter((m) => m.serialNumber).map((m) => m.serialNumber);
     return (
-      <div
-        draggable
-        onDragStart={(e) => handleDragStart(e, entries[0]._id)}
-        onDragOver={(e) => handleDragOverCell(e, key)}
-        onDragLeave={handleDragLeave}
-        onDrop={(e) => {
-          e.preventDefault(); setDragOverKey(null);
-          const fromId = dragId.current; dragId.current = null;
-          if (!fromId) return;
-          const fromProc = processes.find((p) => p._id === fromId);
-          if (!fromProc || fromProc.serialNo === serialNo) return;
-          onSwapSerial(fromId, fromProc.serialNo, entries[0]._id, serialNo);
-        }}
-        onDragEnd={handleDragEnd}
+      <div draggable onDragStart={(e) => handleDragStart(e, entry._id)}
+        onDragOver={(e) => handleDragOverCell(e, key)} onDragLeave={handleDragLeave}
+        onDrop={(e) => handleDropOnProcess(e, entry._id)} onDragEnd={handleDragEnd}
         className="group relative cursor-grab active:cursor-grabbing"
         style={{
-          background: isOver ? "#dbeafe" : c.bg,
-          borderLeft: `5px solid ${isOver ? "#1d4ed8" : c.accent}`,
+          background: isOver ? "#dbeafe" : c.bg, borderLeft: `5px solid ${isOver ? "#1d4ed8" : c.accent}`,
           borderTop: isOver ? "2px solid #1d4ed8" : "1px solid rgba(0,0,0,0.08)",
-          borderRight: "1px solid rgba(0,0,0,0.08)",
-          borderBottom: "1px solid rgba(0,0,0,0.08)",
-          borderRadius: 4, marginBottom: 3,
-          opacity: dragId.current === entries[0]._id ? 0.4 : 1,
+          borderRight: "1px solid rgba(0,0,0,0.08)", borderBottom: "1px solid rgba(0,0,0,0.08)",
+          borderRadius: 4, marginBottom: 3, opacity: dragId.current === entry._id ? 0.4 : 1,
           transition: "border-color 0.1s, background 0.1s",
         }}>
         <span className="absolute left-1 top-1/2 -translate-y-1/2 text-slate-300 text-xs select-none opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">⣿</span>
-
+        <button onClick={(e) => { e.stopPropagation(); setWasteTarget(entry); }} title="Waste"
+          className="absolute top-1 right-1 w-6 h-6 rounded-full hidden group-hover:flex items-center justify-center text-xs font-black bg-red-100 hover:bg-red-500 text-red-600 hover:text-white transition-all z-10 shadow">✕</button>
         <div className="px-4 py-2">
-          {/* Serial badge + fromFloor tags (collected across all entries) */}
           <div className="flex items-start gap-2 mb-1.5 flex-wrap">
             <span className="text-xs font-black px-2 py-0.5 rounded shrink-0"
-              style={{ background: isOver ? "#1d4ed8" : c.badge, color: c.badgeText }}>
-              {serialNo}
-            </span>
-            {entries[0].machineType !== "HELPER" && entries.flatMap((e) => e.machines || []).map((m, i) => (
+              style={{ background: isOver ? "#1d4ed8" : c.badge, color: c.badgeText }}>{entry.serialNo}</span>
+            {entry.machineType !== "HELPER" && (entry.machines || []).map((m, i) => (
               <span key={i} className="text-xs px-2 py-0.5 rounded font-bold shrink-0"
                 style={{ background: c.accent, color: "#fff", opacity: 0.9 }}>{m.fromFloor}</span>
             ))}
           </div>
-
-          {/* Each process entry stacked — separated by a dashed border */}
-          {entries.map((entry, idx) => {
-            const serials = (entry.machines || []).filter((m) => m.serialNumber).map((m) => m.serialNumber);
-            return (
-              <div key={entry._id}
-                style={{
-                  marginBottom:  idx < entries.length - 1 ? 6 : 0,
-                  paddingBottom: idx < entries.length - 1 ? 6 : 0,
-                  borderBottom:  idx < entries.length - 1 ? `1px dashed ${c.accent}40` : "none",
-                  position: "relative",
-                }}>
-                {/* Per-entry waste button (shown on hover) */}
-                <button
-                  onClick={(e) => { e.stopPropagation(); setWasteTarget(entry); }}
-                  title="Waste"
-                  className="absolute top-0 right-0 w-6 h-6 rounded-full hidden group-hover:flex items-center justify-center text-xs font-black bg-red-100 hover:bg-red-500 text-red-600 hover:text-white transition-all z-10 shadow">
-                  ✕
-                </button>
-
-                {entries.length > 1 && (
-                  <div className="text-[9px] font-black uppercase tracking-widest mb-0.5"
-                    style={{ color: `${c.accent}80` }}>
-                    Process {idx + 1}
-                  </div>
-                )}
-
-                <p className="text-sm font-semibold leading-snug mb-1.5" style={{ color: isOver ? "#1e3a5f" : c.text }}>
-                  {entry.processName}
-                </p>
-                <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: isOver ? "#1d4ed8" : c.accent }}>
-                  {entry.machineType}
-                </p>
-
-                {serials.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-1 border-t pt-1.5" style={{ borderColor: `${c.accent}30` }}>
-                    <span className="text-[10px] uppercase tracking-widest font-bold mr-1" style={{ color: `${c.accent}99` }}>S/N:</span>
-                    {serials.map((sn) => {
-                      const isDup = duplicateSerials.has(sn);
-                      return isDup ? (
-                        <span key={sn} className="text-[11px] font-mono font-black px-2 py-0.5 rounded flex items-center gap-1 animate-pulse"
-                          style={{ background: "#fef3c7", color: "#b45309", border: "2px solid #f59e0b", boxShadow: "0 0 6px rgba(245,158,11,0.5)" }}>
-                          ⚠ {sn}
-                        </span>
-                      ) : (
-                        <span key={sn} className="text-[11px] font-mono font-black px-2 py-0.5 rounded"
-                          style={{ background: `${c.accent}18`, color: c.accent, border: `1px solid ${c.accent}40` }}>{sn}</span>
-                      );
-                    })}
-                  </div>
-                )}
-                {serials.some((sn) => duplicateSerials.has(sn)) && (
-                  <div className="mt-1.5 flex items-center gap-1.5 bg-amber-50 border border-amber-300 rounded px-2 py-1">
-                    <span className="text-amber-600 text-[10px]">⚠</span>
-                    <span className="text-[10px] font-bold text-amber-700">
-                      Duplicate serial — also used in another process
-                    </span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <p className="text-sm font-semibold leading-snug mb-1.5" style={{ color: isOver ? "#1e3a5f" : c.text }}>{entry.processName}</p>
+          <p className="text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: isOver ? "#1d4ed8" : c.accent }}>{entry.machineType}</p>
+          {serials.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1 border-t pt-1.5" style={{ borderColor: `${c.accent}30` }}>
+              <span className="text-[10px] uppercase tracking-widest font-bold mr-1" style={{ color: `${c.accent}99` }}>S/N:</span>
+              {serials.map((sn) => (
+                <span key={sn} className="text-[11px] font-mono font-black px-2 py-0.5 rounded"
+                  style={{ background: `${c.accent}18`, color: c.accent, border: `1px solid ${c.accent}40` }}>{sn}</span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     );
   }
-  // ── END CHANGE 2 ────────────────────────────────────────────────────────────
+
+  function EmptySlot({ serialNo }) {
+    const key    = `slot:${serialNo}`;
+    const isOver = dragOverKey === key;
+    return (
+      <div onDragOver={(e) => handleDragOverCell(e, key)} onDragLeave={handleDragLeave} onDrop={(e) => handleDropOnSlot(e, serialNo)}
+        style={{
+          minHeight: 54, borderRadius: 4, marginBottom: 3,
+          border: isOver ? "2px dashed #1d4ed8" : "2px dashed #cbd5e1",
+          background: isOver ? "#eff6ff" : "transparent",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          transition: "border-color 0.1s, background 0.1s",
+        }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: isOver ? "#1d4ed8" : "#94a3b8", letterSpacing: "0.05em" }}>
+          {isOver ? `▼ Drop at slot ${serialNo}` : `# ${serialNo} — Empty`}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-full overflow-auto bg-white relative">
@@ -793,7 +686,7 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
         </div>
       )}
       {Object.keys(summary).length > 0 && (
-        <div className="px-3 py-2 border-b border-slate-200 bg-slate-50 flex flex-wrap gap-2 items-center">
+        <div className="px-3 py-2 border-b border-slate-200 bg-slate-50 flex flex-wrap gap-2">
           {Object.entries(summary).map(([type, count]) => {
             const c = mc(type);
             return (
@@ -803,12 +696,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
               </span>
             );
           })}
-          {/* Duplicate serial alert pill */}
-          {duplicateSerials.size > 0 && (
-            <span className="ml-auto flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border-2 border-amber-400 bg-amber-50 text-amber-700 animate-pulse">
-              ⚠ {duplicateSerials.size} duplicate serial{duplicateSerials.size > 1 ? "s" : ""}: {[...duplicateSerials].join(", ")}
-            </span>
-          )}
         </div>
       )}
       {rows.length === 0 ? (
@@ -831,10 +718,14 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
               return (
                 <tr key={rowIdx}>
                   <td className="border border-slate-200 p-2 align-top" style={{ background: bandBg }}>
-                    {leftSn != null && <GroupedCell serialNo={leftSn} />}
+                    {leftSn != null && (bySerial[leftSn]
+                      ? bySerial[leftSn].map((e) => <ProcessCell key={e._id} entry={e} />)
+                      : <EmptySlot serialNo={leftSn} />)}
                   </td>
                   <td className="border border-slate-200 p-2 align-top" style={{ background: bandBg }}>
-                    {rightSn != null && <GroupedCell serialNo={rightSn} />}
+                    {rightSn != null && (bySerial[rightSn]
+                      ? bySerial[rightSn].map((e) => <ProcessCell key={e._id} entry={e} />)
+                      : <EmptySlot serialNo={rightSn} />)}
                   </td>
                 </tr>
               );
@@ -905,10 +796,12 @@ export default function LineLayoutPage() {
   const [showAddPName,  setShowAddPName]  = React.useState(false);
 
   // ── Delete layout state ──
+  // machineFloors: { "serialNumber": "floor" } — per-machine return floor
   const [deleteTarget,  setDeleteTarget]  = useState(null);
-  const [machineFloors, setMachineFloors] = useState({});
+  const [machineFloors, setMachineFloors] = useState({});  // key=serialNumber, val=floor
   const [deleting,      setDeleting]      = useState(false);
 
+  // Build flat list of all machines with serial numbers from a layout
   function getAllMachines(layout) {
     const result = [];
     for (const proc of layout.processes || []) {
@@ -932,6 +825,7 @@ export default function LineLayoutPage() {
 
   function openDeleteModal(layout) {
     setDeleteTarget(layout);
+    // Pre-fill each machine's return floor with its original fromFloor
     const floors = {};
     for (const proc of layout.processes || []) {
       for (const m of proc.machines || []) {
@@ -1149,9 +1043,11 @@ export default function LineLayoutPage() {
     } finally { setEditSaving(false); setEditUploading(false); }
   }
 
+  // ── Delete layout handler ──
   async function handleDeleteLayout() {
     if (!deleteTarget) return;
     const allMachines = getAllMachines(deleteTarget);
+    // Validate: every machine must have a floor selected
     const missing = allMachines.filter((m) => !machineFloors[m.serialNumber]);
     if (missing.length > 0) {
       showToast("error", `Please select a return floor for all ${missing.length} machine(s).`);
@@ -1159,6 +1055,7 @@ export default function LineLayoutPage() {
     }
     setDeleting(true);
     try {
+      // Build per-machine return list for the API
       const machineReturns = allMachines.map((m) => ({
         machineId:    m.machineId,
         serialNumber: m.serialNumber,
@@ -1174,6 +1071,7 @@ export default function LineLayoutPage() {
         showToast("success", "Layout deleted.");
         setDeleteTarget(null);
         setMachineFloors({});
+        // if we were in builder, go back to list
         if (currentLayout?._id === deleteTarget._id) setCurrentLayout(null);
         setView("list");
         loadLayouts();
@@ -1185,7 +1083,7 @@ export default function LineLayoutPage() {
     <div className="w-screen h-screen overflow-hidden bg-slate-100">
       <div style={{
         transform: "scale(0.75)", transformOrigin: "top left",
-        width: "133.33vw", height: "133.33vh",
+        width: "127.33vw", height: "133.33vh",
         display: "flex", flexDirection: "column", overflow: "hidden",
       }} className="font-sans text-slate-800">
 
@@ -1197,6 +1095,7 @@ export default function LineLayoutPage() {
           const hasMachines = allMachines.length > 0;
           const allFilled   = allMachines.every((m) => machineFloors[m.serialNumber]);
 
+          // "Apply all" bulk-floor setter
           function applyAllFloors(floor) {
             const next = { ...machineFloors };
             allMachines.forEach((m) => { next[m.serialNumber] = floor; });
@@ -1221,6 +1120,8 @@ export default function LineLayoutPage() {
 
                 {/* Body */}
                 <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0">
+
+                  {/* Case A: no machines */}
                   {!hasMachines ? (
                     <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-600">
                       This layout has <strong>{deleteTarget.processes?.length || 0} processes</strong> with no assigned machines. It will be permanently deleted.
@@ -1253,15 +1154,23 @@ export default function LineLayoutPage() {
                             <div key={m.serialNumber}
                               className="flex items-center gap-3 rounded-xl border px-3 py-2.5"
                               style={{ background: c.bg, borderColor: `${c.accent}40` }}>
+
+                              {/* Serial badge */}
                               <span className="font-mono font-black text-sm px-2.5 py-1 rounded-lg shrink-0"
                                 style={{ background: c.accent, color: "#fff" }}>{m.serialNumber}</span>
+
+                              {/* Info */}
                               <div className="flex-1 min-w-0">
                                 <p className="text-xs font-bold truncate" style={{ color: c.text }}>{m.processName}</p>
                                 <p className="text-[10px] font-semibold opacity-70" style={{ color: c.accent }}>
                                   {m.machineType} · was on <strong>{m.fromFloor || "—"}</strong>
                                 </p>
                               </div>
+
+                              {/* Arrow */}
                               <span className="text-slate-400 text-sm shrink-0">→</span>
+
+                              {/* Floor selector */}
                               <select
                                 value={sel}
                                 onChange={(e) => setMachineFloors((prev) => ({ ...prev, [m.serialNumber]: e.target.value }))}
@@ -1270,6 +1179,8 @@ export default function LineLayoutPage() {
                                 <option value="">— Floor —</option>
                                 {FLOOR_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
                               </select>
+
+                              {/* Status dot */}
                               <div className={`w-2 h-2 rounded-full shrink-0 ${sel ? "bg-emerald-400" : "bg-red-400"}`} />
                             </div>
                           );

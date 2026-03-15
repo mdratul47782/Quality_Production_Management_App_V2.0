@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import { dbConnect } from "@/services/mongo";
 import { lineLayoutModel } from "@/models/lineLayout-model";
 
-// Correct formula: manpower = operator + helper + seamSealing
 function calcTargets(smv, planEfficiency, operator, helper, seamSealing, workingHours) {
   const manpower = (parseInt(operator) || 0) + (parseInt(helper) || 0) + (parseInt(seamSealing) || 0);
   const e = (parseFloat(planEfficiency) || 0) / 100;
@@ -16,9 +15,9 @@ function calcTargets(smv, planEfficiency, operator, helper, seamSealing, working
 }
 
 // GET /api/line-layouts
-// Query params:
-//   ?factory=K-2&floor=B-3&lineNo=01   → list layouts (existing behaviour)
-//   ?serialNumber=SN-001&factory=K-2   → find which layout+process uses this serial
+// ?factory=K-2&floor=B-3&lineNo=01   → list layouts (existing behaviour)
+// ?serialNumber=SN-001&factory=K-2   → find which layout uses this serial;
+//                                       returns { layout (full, with all processes), matchedProcessId }
 export async function GET(request) {
   try {
     await dbConnect();
@@ -28,54 +27,32 @@ export async function GET(request) {
     const lineNo       = searchParams.get("lineNo");
     const serialNumber = searchParams.get("serialNumber");
 
-    // ── NEW: serial number lookup ─────────────────────────────────────────────
+    // ── Serial number lookup ──────────────────────────────────────────────────
     if (serialNumber) {
       const query = {};
       if (factory) query.factory = factory;
 
-      // Search all layouts (optionally scoped to factory) for the serial number
       const layouts = await lineLayoutModel.find(query).lean();
 
       for (const layout of layouts) {
         for (const proc of (layout.processes || [])) {
-          const machines = proc.machines || [];
-          const match    = machines.find(
+          const match = (proc.machines || []).find(
             (m) => m.serialNumber && m.serialNumber.toUpperCase() === serialNumber.toUpperCase()
           );
           if (match) {
-            // Found — return the layout header + the specific process
+            // Return the FULL layout (all processes) + which process id matched
             return NextResponse.json({
               success: true,
               data: {
-                layout: {
-                  _id:            layout._id,
-                  factory:        layout.factory,
-                  floor:          layout.floor,
-                  lineNo:         layout.lineNo,
-                  buyer:          layout.buyer,
-                  style:          layout.style,
-                  item:           layout.item,
-                  smv:            layout.smv,
-                  planEfficiency: layout.planEfficiency,
-                  operator:       layout.operator,
-                  helper:         layout.helper,
-                  seamSealing:    layout.seamSealing,
-                  workingHours:   layout.workingHours,
-                },
-                process: {
-                  _id:         proc._id,
-                  serialNo:    proc.serialNo,
-                  processName: proc.processName,
-                  machineType: proc.machineType,
-                  machines:    machines,   // all machines in the process (for context)
-                },
+                layout,                          // full layout document including all processes
+                matchedProcessId: String(proc._id), // so the UI can highlight the right one
               },
             });
           }
         }
       }
 
-      // Serial not found in any layout
+      // Not found in any layout
       return NextResponse.json({ success: true, data: null });
     }
 
@@ -99,8 +76,7 @@ export async function POST(request) {
     await dbConnect();
     const body = await request.json();
     const {
-      factory,
-      floor, lineNo, buyer, style, item,
+      factory, floor, lineNo, buyer, style, item,
       smv, planEfficiency, operator, helper, seamSealing,
       workingHours, sketchUrl,
     } = body;
@@ -117,7 +93,7 @@ export async function POST(request) {
     );
 
     const layout = await lineLayoutModel.create({
-      factory:  factory || "",
+      factory: factory || "",
       floor, lineNo, buyer, style, item,
       smv:            parseFloat(smv)            || 0,
       planEfficiency: parseFloat(planEfficiency) || 0,

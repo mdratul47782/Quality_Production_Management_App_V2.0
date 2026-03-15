@@ -45,10 +45,10 @@ const STATUS_OPTIONS = [
 ];
 
 const STATUS_STYLE = {
-  Running:    { badge: "bg-emerald-950 border-emerald-700 text-emerald-300", ring: "focus:border-emerald-500 focus:ring-emerald-500/20", border: "border-emerald-800", dot: "bg-emerald-400" },
-  Idle:       { badge: "bg-amber-950 border-amber-700 text-amber-300",       ring: "focus:border-amber-500 focus:ring-amber-500/20",     border: "border-amber-800",   dot: "bg-amber-400"   },
-  Repairable: { badge: "bg-orange-950 border-orange-700 text-orange-300",    ring: "focus:border-orange-500 focus:ring-orange-500/20",   border: "border-orange-800",  dot: "bg-orange-400"  },
-  Damage:     { badge: "bg-red-950 border-red-700 text-red-300",             ring: "focus:border-red-500 focus:ring-red-500/20",         border: "border-red-800",     dot: "bg-red-400"     },
+  Running:    { badge: "bg-emerald-950 border-emerald-700 text-emerald-300", ring: "focus:border-emerald-500 focus:ring-emerald-500/20", border: "border-emerald-800" },
+  Idle:       { badge: "bg-amber-950 border-amber-700 text-amber-300",       ring: "focus:border-amber-500 focus:ring-amber-500/20",     border: "border-amber-800"   },
+  Repairable: { badge: "bg-orange-950 border-orange-700 text-orange-300",    ring: "focus:border-orange-500 focus:ring-orange-500/20",   border: "border-orange-800"  },
+  Damage:     { badge: "bg-red-950 border-red-700 text-red-300",             ring: "focus:border-red-500 focus:ring-red-500/20",         border: "border-red-800"     },
 };
 
 const STATUS_TEXT_COLOR = {
@@ -65,7 +65,7 @@ const STATUS_BADGE_MINI = {
   Damage:     "bg-red-950 border-red-800 text-red-300",
 };
 
-// ── Machine type → color map (mirrors LineLayout page) ───────────────────────
+// ── Machine type → color (mirrors LineLayout page) ────────────────────────────
 const MACHINE_COLORS = {
   "SINGLE NDL (PLAIN M/C)":            { bg:"#dbeafe", accent:"#1d4ed8", text:"#1e3a5f", badge:"#1d4ed8" },
   "SINGLE NDL (TOP FEED) M/C":         { bg:"#dbeafe", accent:"#1d4ed8", text:"#1e3a5f", badge:"#1d4ed8" },
@@ -100,24 +100,156 @@ function Toast({ toast }) {
   );
 }
 
+// ─── Single Process Card (used inside the modal grid) ────────────────────────
+function ProcessCard({ proc, searchedSerial, isMatched }) {
+  const c = mc(proc.machineType);
+
+  // All serial numbers in this process
+  const serials = (proc.machines || []).map((m) => m.serialNumber).filter(Boolean);
+
+  // Does any serial in this process match the searched one?
+  const hasMatchedSerial = serials.some(
+    (sn) => sn.toUpperCase() === (searchedSerial || "").toUpperCase()
+  );
+
+  if (isMatched) {
+    // ── HIGHLIGHTED card — bright yellow glow ─────────────────────────────
+    return (
+      <div
+        style={{
+          background:   "#fefce8",          // bright warm yellow-white
+          borderLeft:   "5px solid #f59e0b",
+          border:       "2px solid #f59e0b",
+          borderRadius: 8,
+          boxShadow:    "0 0 0 3px #fde68a, 0 4px 16px #f59e0b55",
+          padding:      "10px 12px",
+          position:     "relative",
+        }}
+      >
+        {/* "YOU ARE HERE" ribbon */}
+        <div
+          style={{
+            position:     "absolute",
+            top:          -1,
+            right:        8,
+            background:   "#f59e0b",
+            color:        "#fff",
+            fontSize:     9,
+            fontWeight:   900,
+            letterSpacing: "0.08em",
+            padding:      "1px 7px",
+            borderRadius: "0 0 6px 6px",
+            textTransform: "uppercase",
+          }}
+        >
+          ◉ This Machine
+        </div>
+
+        {/* Serial No badge */}
+        <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap", marginBottom:6, marginTop:8 }}>
+          <span style={{ background:"#f59e0b", color:"#fff", fontSize:10, fontWeight:900, padding:"1px 8px", borderRadius:4 }}>
+            #{proc.serialNo}
+          </span>
+          {serials.map((sn) => {
+            const isThis = sn.toUpperCase() === (searchedSerial || "").toUpperCase();
+            return (
+              <span
+                key={sn}
+                style={{
+                  fontFamily:    "monospace",
+                  fontSize:       isThis ? 11 : 10,
+                  fontWeight:     900,
+                  padding:        isThis ? "2px 10px" : "1px 7px",
+                  borderRadius:   20,
+                  background:     isThis ? "#f59e0b" : "#fde68a",
+                  color:          isThis ? "#fff"    : "#92400e",
+                  border:         isThis ? "2px solid #d97706" : "1px solid #fcd34d",
+                  boxShadow:      isThis ? "0 0 0 2px #fde68a" : "none",
+                }}
+              >
+                {isThis ? `◉ ${sn}` : sn}
+              </span>
+            );
+          })}
+        </div>
+
+        <p style={{ fontSize:13, fontWeight:700, color:"#78350f", lineHeight:1.3, marginBottom:4 }}>
+          {proc.processName}
+        </p>
+        <p style={{ fontSize:10, fontWeight:700, color:"#d97706", textTransform:"uppercase", letterSpacing:"0.06em" }}>
+          {proc.machineType}
+        </p>
+      </div>
+    );
+  }
+
+  // ── Normal card (same colour as LineLayout grid) ──────────────────────────
+  return (
+    <div
+      style={{
+        background:   c.bg,
+        borderLeft:   `4px solid ${c.accent}`,
+        border:       `1px solid ${c.accent}20`,
+        borderLeftWidth: 4,
+        borderLeftStyle: "solid",
+        borderLeftColor: c.accent,
+        borderRadius: 6,
+        padding:      "8px 10px",
+        opacity:      0.82,   // slightly dimmed so the highlighted one pops
+      }}
+    >
+      {/* Serial No badge + machine serial chips */}
+      <div style={{ display:"flex", alignItems:"center", gap:5, flexWrap:"wrap", marginBottom:5 }}>
+        <span style={{ background:c.badge, color:"#fff", fontSize:10, fontWeight:900, padding:"1px 7px", borderRadius:4 }}>
+          #{proc.serialNo}
+        </span>
+        {serials.map((sn) => (
+          <span
+            key={sn}
+            style={{
+              fontFamily: "monospace",
+              fontSize:    10,
+              fontWeight:  700,
+              padding:     "1px 6px",
+              borderRadius:4,
+              background: `${c.accent}18`,
+              color:       c.accent,
+              border:      `1px solid ${c.accent}30`,
+            }}
+          >
+            {sn}
+          </span>
+        ))}
+      </div>
+
+      <p style={{ fontSize:12, fontWeight:600, color:c.text, lineHeight:1.3, marginBottom:3 }}>
+        {proc.processName}
+      </p>
+      <p style={{ fontSize:10, fontWeight:700, color:c.accent, textTransform:"uppercase", letterSpacing:"0.05em" }}>
+        {proc.machineType}
+      </p>
+    </div>
+  );
+}
+
 // ─── Line Layout Info Modal ───────────────────────────────────────────────────
 function LineLayoutModal({ serialNumber, factory, onClose }) {
-  const [layoutInfo, setLayoutInfo] = useState(null);
-  const [loading,    setLoading]    = useState(true);
+  const [data,    setData]    = useState(null);   // { layout, matchedProcessId }
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setLayoutInfo(null);
+    setData(null);
     (async () => {
       try {
         const qs = new URLSearchParams({ serialNumber });
         if (factory) qs.set("factory", factory);
         const res  = await fetch(`/api/line-layouts?${qs}`);
         const json = await res.json();
-        if (!cancelled) setLayoutInfo(json.success ? json.data : null);
+        if (!cancelled) setData(json.success ? json.data : null);
       } catch {
-        if (!cancelled) setLayoutInfo(null);
+        if (!cancelled) setData(null);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -126,57 +258,71 @@ function LineLayoutModal({ serialNumber, factory, onClose }) {
   }, [serialNumber, factory]);
 
   useEffect(() => {
-    const handler = (e) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
+    const h = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
-  const proc   = layoutInfo?.process;
-  const layout = layoutInfo?.layout;
-  const c      = mc(proc?.machineType);
+  const layout           = data?.layout;
+  const matchedProcessId = data?.matchedProcessId;
+
+  // Sort processes by serialNo and build left/right columns
+  const sorted = layout
+    ? [...(layout.processes || [])].sort((a, b) => a.serialNo - b.serialNo)
+    : [];
+
+  // Build paired rows  [left, right]  for 2-column grid
+  const pairs = [];
+  for (let i = 0; i < sorted.length; i += 2) {
+    pairs.push([sorted[i], sorted[i + 1] ?? null]);
+  }
 
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/70 z-[60] backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/75 z-[60] backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal */}
-      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 pointer-events-none">
-        <div className="pointer-events-auto w-full max-w-md bg-[#0f1117] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden font-mono">
-
+      {/* Modal — wide enough to show the 2-col grid comfortably */}
+      <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 pointer-events-none">
+        <div
+          className="pointer-events-auto flex flex-col bg-[#0f1117] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden font-mono"
+          style={{ width: "min(780px, 96vw)", maxHeight: "92vh" }}
+        >
           {/* Gradient top bar */}
-          <div className="h-1 w-full bg-gradient-to-r from-violet-500 via-cyan-400 to-blue-500" />
+          <div className="h-1 w-full shrink-0 bg-gradient-to-r from-violet-500 via-amber-400 to-cyan-400" />
 
           {/* Header */}
-          <div className="flex items-center justify-between px-5 pt-4 pb-4 border-b border-slate-800">
-            <div className="flex items-center gap-2.5">
-              <span className="text-lg">📐</span>
+          <div className="flex items-center justify-between px-5 pt-4 pb-4 border-b border-slate-800 shrink-0">
+            <div className="flex items-center gap-3">
+              <span className="text-xl">📐</span>
               <div>
-                <p className="text-[10px] text-violet-400 uppercase tracking-widest">Line Layout Info</p>
-                <p className="text-white font-bold text-sm">{serialNumber}</p>
+                <p className="text-[10px] text-violet-400 uppercase tracking-widest">Line Layout — Full View</p>
+                <p className="text-white font-bold text-sm">
+                  Searching: <span className="text-amber-300 font-mono">{serialNumber}</span>
+                </p>
               </div>
             </div>
             <button onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-all font-bold">
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-all font-bold text-base">
               ✕
             </button>
           </div>
 
           {/* Body */}
-          <div className="px-5 py-5 min-h-[180px]">
+          <div className="flex-1 overflow-y-auto min-h-0">
 
             {/* Loading */}
             {loading && (
-              <div className="flex flex-col items-center justify-center py-10 gap-3">
-                <div className="w-6 h-6 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <div className="w-7 h-7 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
                 <p className="text-slate-500 text-xs animate-pulse">Searching line layouts...</p>
               </div>
             )}
 
-            {/* Not assigned */}
-            {!loading && !layoutInfo && (
-              <div className="flex flex-col items-center justify-center py-10 gap-3">
-                <span className="text-4xl">📭</span>
+            {/* Not found */}
+            {!loading && !data && (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <span className="text-5xl">📭</span>
                 <p className="text-slate-300 text-sm font-bold">কোনো line-এ assign নেই</p>
                 <p className="text-slate-600 text-xs text-center">
                   <span className="font-mono text-slate-400">{serialNumber}</span> এখন কোনো active line layout-এ নেই।
@@ -184,118 +330,120 @@ function LineLayoutModal({ serialNumber, factory, onClose }) {
               </div>
             )}
 
-            {/* Found */}
-            {!loading && layoutInfo && layout && proc && (
-              <div className="space-y-4">
+            {/* Found — layout info + full process grid */}
+            {!loading && data && layout && (
+              <div>
 
-                {/* Location chips */}
-                <div className="flex flex-wrap gap-2">
-                  {layout.factory && (
-                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full border"
-                      style={{ background: `${c.accent}22`, borderColor: `${c.accent}55`, color: c.accent }}>
-                      🏭 {layout.factory}
+                {/* ── Layout info bar ── */}
+                <div className="px-5 py-3 border-b border-slate-800 bg-[#161b27]">
+                  {/* Location chips */}
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {layout.factory && (
+                      <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-violet-950 border border-violet-700 text-violet-300">
+                        🏭 {layout.factory}
+                      </span>
+                    )}
+                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-cyan-950 border border-cyan-700 text-cyan-300">
+                      Floor {layout.floor}
                     </span>
-                  )}
-                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full border"
-                    style={{ background: `${c.accent}22`, borderColor: `${c.accent}55`, color: c.accent }}>
-                    Floor {layout.floor}
-                  </span>
-                  <span className="text-[10px] font-bold px-2.5 py-1 rounded-full border"
-                    style={{ background: `${c.accent}22`, borderColor: `${c.accent}55`, color: c.accent }}>
-                    Line {layout.lineNo}
-                  </span>
-                </div>
-
-                {/* Layout meta */}
-                <div className="bg-[#161b27] border border-slate-800 rounded-xl overflow-hidden">
-                  <div className="h-px w-full" style={{ background: `linear-gradient(to right, ${c.accent}, transparent)` }} />
-                  <div className="px-4 py-3 space-y-2">
+                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-blue-950 border border-blue-700 text-blue-300">
+                      Line {layout.lineNo}
+                    </span>
+                    <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-slate-800 border border-slate-600 text-slate-300">
+                      {layout.processes?.length || 0} processes
+                    </span>
+                  </div>
+                  {/* Meta row */}
+                  <div className="flex flex-wrap gap-x-5 gap-y-1">
                     {[
                       ["Buyer",  layout.buyer],
                       ["Style",  layout.style],
                       ["Item",   layout.item],
-                    ].map(([label, val]) => val ? (
-                      <div key={label} className="flex justify-between items-center">
-                        <span className="text-slate-500 text-[10px] uppercase tracking-widest">{label}</span>
-                        <span className="text-slate-200 text-xs font-bold">{val}</span>
+                      ["SMV",    layout.smv],
+                      ["Eff.",   `${layout.planEfficiency}%`],
+                      ["Manpower", layout.manpower],
+                      [`Daily (${layout.workingHours}h)`, layout.dailyTarget],
+                    ].map(([label, val]) => val != null && val !== "" ? (
+                      <div key={label} className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-slate-500 uppercase tracking-widest">{label}:</span>
+                        <span className="text-[11px] text-slate-200 font-bold">{val}</span>
                       </div>
                     ) : null)}
                   </div>
                 </div>
 
-                {/* Process card — same colour style as LineLayout grid */}
-                <div>
-                  <p className="text-[10px] text-slate-500 uppercase tracking-widest mb-2">Process</p>
-                  <div
-                    className="rounded-xl px-4 py-3"
-                    style={{
-                      background:  c.bg,
-                      borderLeft:  `4px solid ${c.accent}`,
-                      border:      `1px solid ${c.accent}25`,
-                      borderLeftWidth: "4px",
-                      borderLeftStyle: "solid",
-                      borderLeftColor: c.accent,
-                    }}
-                  >
-                    {/* Badges row */}
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      {/* Process serial no */}
-                      <span className="text-[10px] font-black px-2 py-0.5 rounded"
-                        style={{ background: c.badge, color: "#fff" }}>
-                        #{proc.serialNo}
-                      </span>
-
-                      {/* THE searched serial — highlighted with glow ring */}
-                      <span
-                        className="text-[11px] font-mono font-black px-2.5 py-0.5 rounded-full"
-                        style={{
-                          background: "#fff",
-                          color:      c.accent,
-                          border:     `2px solid ${c.accent}`,
-                          boxShadow:  `0 0 0 3px ${c.accent}33`,
-                        }}
-                      >
-                        ◉ {serialNumber}
-                      </span>
-
-                      {/* Other serials in same process (dimmed) */}
-                      {(proc.machines || [])
-                        .filter((m) => m.serialNumber && m.serialNumber.toUpperCase() !== serialNumber.toUpperCase())
-                        .map((m, i) => (
-                          <span key={i} className="text-[10px] font-mono px-2 py-0.5 rounded"
-                            style={{ background: `${c.accent}18`, color: c.accent, border: `1px solid ${c.accent}30` }}>
-                            {m.serialNumber}
-                          </span>
-                        ))}
-                    </div>
-
-                    {/* Process name */}
-                    <p className="text-sm font-bold leading-snug mb-1" style={{ color: c.text }}>
-                      {proc.processName}
-                    </p>
-
-                    {/* Machine type */}
-                    <p className="text-[10px] font-bold uppercase tracking-wide" style={{ color: c.accent }}>
-                      {proc.machineType}
-                    </p>
-
-                    {/* From floor of the searched serial */}
-                    {(proc.machines || []).map((m, i) =>
-                      m.serialNumber && m.serialNumber.toUpperCase() === serialNumber.toUpperCase() && m.fromFloor
-                        ? <p key={i} className="text-[10px] mt-1.5" style={{ color: `${c.accent}99` }}>
-                            Originally from: <strong>{m.fromFloor}</strong>
-                          </p>
-                        : null
-                    )}
+                {/* ── Legend ── */}
+                <div className="px-5 py-2.5 border-b border-slate-800 flex items-center gap-4 bg-[#0f1117]">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-sm bg-amber-400" />
+                    <span className="text-[10px] text-amber-300 font-bold uppercase tracking-widest">Searched machine</span>
                   </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-sm bg-blue-700 opacity-50" />
+                    <span className="text-[10px] text-slate-400 uppercase tracking-widest">Other processes</span>
+                  </div>
+                  <span className="text-[10px] text-slate-600 ml-auto">Left ← Serial → Right (2-column)</span>
+                </div>
+
+                {/* ── 2-column process grid (mirrors LineLayout) ── */}
+                <div className="px-4 py-4">
+                  {/* Column headers */}
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="text-center text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-blue-900/60 text-blue-300 border border-blue-800">
+                      ← LEFT SIDE
+                    </div>
+                    <div className="text-center text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-slate-800 text-slate-400 border border-slate-700">
+                      RIGHT SIDE →
+                    </div>
+                  </div>
+
+                  {/* Rows */}
+                  <div className="space-y-2">
+                    {pairs.map(([left, right], rowIdx) => (
+                      <div key={rowIdx} className="grid grid-cols-2 gap-3">
+                        {/* Left cell */}
+                        <div>
+                          {left ? (
+                            <ProcessCard
+                              proc={left}
+                              searchedSerial={serialNumber}
+                              isMatched={String(left._id) === matchedProcessId}
+                            />
+                          ) : (
+                            <div className="h-full min-h-[54px] border-2 border-dashed border-slate-800 rounded-lg flex items-center justify-center">
+                              <span className="text-[10px] text-slate-700">Empty</span>
+                            </div>
+                          )}
+                        </div>
+                        {/* Right cell */}
+                        <div>
+                          {right ? (
+                            <ProcessCard
+                              proc={right}
+                              searchedSerial={serialNumber}
+                              isMatched={String(right._id) === matchedProcessId}
+                            />
+                          ) : (
+                            <div className="h-full min-h-[54px] border-2 border-dashed border-slate-800 rounded-lg flex items-center justify-center">
+                              <span className="text-[10px] text-slate-700">Empty</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {sorted.length === 0 && (
+                    <p className="text-center text-slate-600 text-xs py-8">No processes in this layout.</p>
+                  )}
                 </div>
 
               </div>
             )}
           </div>
 
-          {/* Footer close button */}
-          <div className="px-5 pb-5">
+          {/* Footer */}
+          <div className="px-5 pb-4 pt-3 border-t border-slate-800 shrink-0">
             <button onClick={onClose}
               className="w-full py-2.5 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 rounded-xl text-xs font-bold uppercase tracking-widest transition-all">
               Close
@@ -309,15 +457,15 @@ function LineLayoutModal({ serialNumber, factory, onClose }) {
 
 // ─── Serial Search Tab ────────────────────────────────────────────────────────
 function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
-  const [query,         setQuery]         = useState("");
-  const [searching,     setSearching]     = useState(false);
-  const [result,        setResult]        = useState(null);
-  const [notFound,      setNotFound]      = useState(false);
-  const [editFloor,     setEditFloor]     = useState("");
-  const [editStatus,    setEditStatus]    = useState("Running");
-  const [saving,        setSaving]        = useState(false);
-  const [deleting,      setDeleting]      = useState(false);
-  const [showModal,     setShowModal]     = useState(false);
+  const [query,          setQuery]          = useState("");
+  const [searching,      setSearching]      = useState(false);
+  const [result,         setResult]         = useState(null);
+  const [notFound,       setNotFound]       = useState(false);
+  const [editFloor,      setEditFloor]      = useState("");
+  const [editStatus,     setEditStatus]     = useState("Running");
+  const [saving,         setSaving]         = useState(false);
+  const [deleting,       setDeleting]       = useState(false);
+  const [showModal,      setShowModal]      = useState(false);
   const [searchedSerial, setSearchedSerial] = useState("");
 
   const handleSearch = useCallback(async () => {
@@ -342,7 +490,6 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
         setResult(found);
         setEditFloor(found.unit.floorName);
         setEditStatus(found.unit.status);
-        setNotFound(false);
         setSearchedSerial(sn);
       } else {
         setNotFound(true);
@@ -390,17 +537,12 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
 
   return (
     <>
-      {/* Line Layout modal */}
       {showModal && searchedSerial && (
-        <LineLayoutModal
-          serialNumber={searchedSerial}
-          factory={factory}
-          onClose={() => setShowModal(false)}
-        />
+        <LineLayoutModal serialNumber={searchedSerial} factory={factory} onClose={() => setShowModal(false)} />
       )}
 
       <div className="p-7 space-y-5">
-        {/* Search input */}
+        {/* Search */}
         <div>
           <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Search by Serial Number</label>
           <div className="flex gap-2">
@@ -430,7 +572,6 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
             {/* Machine info card */}
             <div className="bg-[#0f1117] border border-slate-800 rounded-xl p-4 space-y-2">
               <p className="text-[10px] text-cyan-400 uppercase tracking-widest font-mono">found</p>
-
               <div className="flex justify-between items-center">
                 <span className="text-slate-500 text-xs">Serial</span>
                 <span className="text-white font-mono font-bold text-sm">{result.unit.serialNumber}</span>
@@ -448,18 +589,15 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
                 <span className={`font-bold text-sm ${STATUS_TEXT_COLOR[result.unit.status]}`}>{result.unit.status}</span>
               </div>
 
-              {/* ── Line Layout button ── */}
+              {/* Line Layout button */}
               <div className="pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(true)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-violet-800/70 bg-violet-950/30 hover:bg-violet-900/50 hover:border-violet-600 text-violet-300 transition-all group"
-                >
+                <button type="button" onClick={() => setShowModal(true)}
+                  className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-violet-800/70 bg-violet-950/30 hover:bg-violet-900/50 hover:border-violet-600 text-violet-300 transition-all group">
                   <div className="flex items-center gap-2.5">
                     <span className="text-base">📐</span>
                     <div className="text-left">
                       <p className="text-xs font-bold leading-tight">Line Layout Info</p>
-                      <p className="text-[10px] text-violet-400/60 leading-tight">এই serial কোন line-এ আছে দেখুন</p>
+                      <p className="text-[10px] text-violet-400/60 leading-tight">সব process দেখুন — searched machine highlighted</p>
                     </div>
                   </div>
                   <span className="text-violet-500 group-hover:translate-x-0.5 group-hover:text-violet-300 transition-all text-sm">→</span>
@@ -642,8 +780,7 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
               <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">
                 {fetchingUnits
                   ? <span className="text-cyan-400 animate-pulse">Loading...</span>
-                  : <span>Total <span className="text-white font-bold">{existingUnits.length}</span> units</span>
-                }
+                  : <span>Total <span className="text-white font-bold">{existingUnits.length}</span> units</span>}
               </p>
               <div className="flex gap-1.5 flex-wrap justify-end">
                 <button type="button" onClick={() => setStatusFilter("ALL")}
@@ -675,7 +812,6 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
               )}
             </div>
           </div>
-
           <div className="overflow-y-auto" style={{ maxHeight: 220 }}>
             {fetchingUnits ? (
               <div className="flex items-center justify-center py-8">
@@ -705,7 +841,6 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
               </div>
             )}
           </div>
-
           {(unitSearch || statusFilter !== "ALL") && !fetchingUnits && (
             <div className="px-4 py-2 border-t border-slate-800 text-[10px] text-slate-500 font-mono">
               {filteredUnits.length} / {existingUnits.length} showing
