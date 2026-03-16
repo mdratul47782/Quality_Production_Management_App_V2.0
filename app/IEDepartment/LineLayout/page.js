@@ -1185,7 +1185,7 @@ export default function LineLayoutPage() {
     <div className="w-screen h-screen overflow-hidden bg-slate-100">
       <div style={{
         transform: "scale(0.75)", transformOrigin: "top left",
-        width: "133.33vw", height: "133.33vh",
+        width: "126vw", height: "133.33vh",
         display: "flex", flexDirection: "column", overflow: "hidden",
       }} className="font-sans text-slate-800">
 
