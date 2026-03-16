@@ -4,7 +4,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/app/hooks/useAuth";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
 const FACTORY_OPTIONS = ["K-2", "K-3", "K-4", "Others"];
 const FLOOR_OPTIONS   = ["A-2","B-2","A-3","B-3","A-4","B-4","A-5","B-5","A-6","B-6","C-4","K-3","SMD/CAD","Others"];
 const LINE_OPTIONS    = Array.from({ length: 20 }, (_, i) => String(i + 1).padStart(2, "0"));
@@ -39,7 +38,6 @@ const MACHINE_COLORS = {
 
 function mc(type) { return MACHINE_COLORS[type] || MACHINE_COLORS["default"]; }
 
-// ─── FIX-1: Always compute targets live from fields, never trust stored values ──
 function calcTargets(smv, eff, operator, helper, seamSealing, hours) {
   const manpower = (parseInt(operator)||0) + (parseInt(helper)||0) + (parseInt(seamSealing)||0);
   const e = (parseFloat(eff) || 0) / 100;
@@ -52,11 +50,20 @@ function calcTargets(smv, eff, operator, helper, seamSealing, hours) {
 }
 
 // ─── openPrintWindow ──────────────────────────────────────────────────────────
-// Compact print: info table + image side-by-side, tiny fonts to fit 50 processes on A4
+// All sections are width:100% so every table's right edge aligns with the image.
+// Sized to fit 50 processes (25 rows × 2 col) + 10-15 machine rows on A4 portrait.
+//
+// A4 usable height @ 4mm top+bottom padding ≈ 282mm
+//   Title rows      : ~8mm
+//   Info + image    : ~12mm
+//   Process header  : ~5mm
+//   25 process rows : ~25 × 4mm = ~100mm   (height:13px ≈ ~3.4mm)
+//   Machine summary : ~15 × 3.5mm = ~52mm
+//   Signature       : ~10mm
+//   Total           : ~187mm  ✓ fits with margin
 function openPrintWindow(layout) {
   if (!layout) return;
 
-  // FIX-1: recompute targets from fields so print always shows correct values
   const computed = calcTargets(
     layout.smv, layout.planEfficiency,
     layout.operator, layout.helper, layout.seamSealing, layout.workingHours
@@ -64,7 +71,6 @@ function openPrintWindow(layout) {
 
   const procs = [...(layout.processes || [])].sort((a, b) => a.serialNo - b.serialNo);
 
-  // Group by serialNo — same serialNo → stacked in one print cell
   const bySn = {};
   procs.forEach((p) => {
     if (!bySn[p.serialNo]) bySn[p.serialNo] = [];
@@ -90,7 +96,7 @@ function openPrintWindow(layout) {
 
   const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  // Compact info rows — 5 rows × 2 col-pairs, very small font
+  // Info table — 5 rows, minimal height
   const infoRows = [
     ["Unit",  `${layout.floor} - LINE NO-${layout.lineNo}`, "Plan Efficiency:",                              `${layout.planEfficiency}%`],
     ["Buyer", layout.buyer,                                  "Op + Hel + Seam Sealing",                      `${layout.operator}+${layout.helper}+${layout.seamSealing}`],
@@ -98,16 +104,14 @@ function openPrintWindow(layout) {
     ["Item",  layout.item,                                   "1 Hour Target:",                               computed.oneHourTarget],
     ["SMV",   layout.smv,                                    `Total Daily Target (${layout.workingHours}hrs)`, computed.dailyTarget],
   ].map(([l, v, l2, v2]) => `
-    <tr style="height:14px">
-      <td style="border:1px solid #000;font-weight:bold;padding:1px 2px;font-size:6px">${esc(l)}</td>
-      <td colspan="2" style="border:1px solid #000;padding:1px 2px;font-size:6px">${esc(v)}</td>
-      <td style="border:1px solid #000;font-weight:bold;text-align:right;padding:1px 2px;font-size:6px">${esc(l2)}</td>
-      <td style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 2px;font-size:6px">${esc(v2)}</td>
+    <tr>
+      <td style="border:1px solid #000;font-weight:bold;padding:1px 3px;font-size:6.5px;white-space:nowrap">${esc(l)}</td>
+      <td colspan="2" style="border:1px solid #000;padding:1px 3px;font-size:6.5px">${esc(v)}</td>
+      <td style="border:1px solid #000;font-weight:bold;text-align:right;padding:1px 3px;font-size:6.5px;white-space:nowrap">${esc(l2)}</td>
+      <td style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 3px;font-size:6.5px">${esc(v2)}</td>
     </tr>`).join("");
 
-  // ── CHANGE 1: cellHtml now accepts an array of process entries (same serialNo).
-  //    Single entry → renders exactly as before.
-  //    Multiple entries → stacks processName + machineType with dashed dividers in one cell.
+  // cellHtml — 3 tds per process entry (SL | Process Name | Machine)
   function cellHtml(entries) {
     if (!entries || entries.length === 0) {
       return `
@@ -118,44 +122,40 @@ function openPrintWindow(layout) {
     if (entries.length === 1) {
       const e = entries[0];
       return `
-        <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6px;padding:1px 2px">${esc(e.serialNo)}</td>
-        <td style="border:1px solid #000;font-weight:bold;font-size:6px;padding:1px 2px;white-space:normal">${esc(e.processName)}</td>
-        <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:5.5px;padding:1px 2px;white-space:normal;line-height:1.1">${esc(e.machineType ?? "")}</td>`;
+        <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6.5px;padding:1px 2px;white-space:nowrap">${esc(e.serialNo)}</td>
+        <td style="border:1px solid #000;font-weight:bold;font-size:6.5px;padding:1px 3px;word-break:break-word">${esc(e.processName)}</td>
+        <td style="border:1px solid #000;text-align:center;font-size:6px;padding:1px 2px;word-break:break-word;line-height:1.15">${esc(e.machineType ?? "")}</td>`;
     }
-    // Multiple entries with same serialNo — stack with dashed separator
     const pStack = entries.map((e, i) =>
-      `<div style="font-size:5.5px;font-weight:bold;line-height:1.3;white-space:normal;${i > 0 ? "border-top:1px dashed #aaa;margin-top:1px;padding-top:1px;" : ""}">${esc(e.processName)}</div>`
+      `<div style="font-size:6.5px;font-weight:bold;line-height:1.3;word-break:break-word;${i > 0 ? "border-top:1px dashed #bbb;margin-top:1px;padding-top:1px;" : ""}">${esc(e.processName)}</div>`
     ).join("");
     const mStack = entries.map((e, i) =>
-      `<div style="font-size:5px;line-height:1.2;${i > 0 ? "border-top:1px dashed #aaa;margin-top:1px;padding-top:1px;" : ""}">${esc(e.machineType ?? "")}</div>`
+      `<div style="font-size:6px;line-height:1.2;word-break:break-word;${i > 0 ? "border-top:1px dashed #bbb;margin-top:1px;padding-top:1px;" : ""}">${esc(e.machineType ?? "")}</div>`
     ).join("");
     return `
-      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6px;padding:1px 2px;vertical-align:top">${esc(entries[0].serialNo)}</td>
-      <td style="border:1px solid #000;padding:1px 2px;vertical-align:top">${pStack}</td>
+      <td style="border:1px solid #000;text-align:center;font-weight:bold;font-size:6.5px;padding:1px 2px;vertical-align:top;white-space:nowrap">${esc(entries[0].serialNo)}</td>
+      <td style="border:1px solid #000;padding:1px 3px;vertical-align:top">${pStack}</td>
       <td style="border:1px solid #000;text-align:center;padding:1px 2px;vertical-align:top">${mStack}</td>`;
   }
 
-  // pairs now pass arrays (bySn[sn] is already an array, null for empty slots)
   const processRows = pairs.map(({ L, R }) => {
-    return `<tr style="height:14px">
+    return `<tr style="height:13px">
       ${cellHtml(L)}
-      <td style="border:none;width:2px"></td>
+      <td style="border:none;width:3px;background:#fff"></td>
       ${cellHtml(R)}
-      <td style="border:none;width:2px"></td>
     </tr>`;
   }).join("");
 
   const machRows = Object.entries(machSummary).map(([m, q]) =>
-    `<tr style="height:12px">
-      <td style="border:1px solid #000;padding:1px 2px;font-size:5.5px">${esc(m)}</td>
-      <td style="border:1px solid #000;text-align:center;font-size:6px;padding:1px 2px">${q}</td>
+    `<tr>
+      <td style="border:1px solid #000;padding:1px 3px;font-size:6.5px">${esc(m)}</td>
+      <td style="border:1px solid #000;text-align:center;font-size:6.5px;font-weight:bold;padding:1px 3px">${q}</td>
     </tr>`
   ).join("");
 
-  // Image placed BESIDE the info table (right cell)
   const sketchImg = layout.sketchUrl
-    ? `<img src="${esc(layout.sketchUrl)}" style="max-height:60px;max-width:90px;object-fit:contain;" crossorigin="anonymous"/>`
-    : "";
+    ? `<img src="${esc(layout.sketchUrl)}" style="max-height:58px;max-width:100%;object-fit:contain;" crossorigin="anonymous"/>`
+    : `<span style="font-size:5.5px;color:#aaa">No sketch</span>`;
 
   const html = `<!DOCTYPE html>
 <html>
@@ -163,97 +163,129 @@ function openPrintWindow(layout) {
   <meta charset="utf-8"/>
   <title>Line Layout - ${esc(layout.floor)} Line ${esc(layout.lineNo)}</title>
   <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; padding: 5mm 6mm; font-family: Arial, sans-serif; font-size: 6px; background: #fff; }
-    table { border-collapse: collapse; }
+    * { box-sizing: border-box; margin:0; padding:0; }
+    body {
+      padding: 4mm 5mm;
+      font-family: Arial, sans-serif;
+      font-size: 6.5px;
+      background: #fff;
+      width: 210mm;
+    }
+    table { border-collapse: collapse; width: 100%; }
     @page { size: A4 portrait; margin: 0; }
     tr { page-break-inside: avoid; }
     thead { display: table-header-group; }
   </style>
 </head>
 <body>
-  <div>
 
-    <!-- Company title -->
-    <table style="width:100%;margin-bottom:1px">
+  <!-- ① Company title -->
+  <table style="margin-bottom:1px">
+    <tr>
+      <td style="border:1px solid #000;font-weight:bold;font-size:9px;text-align:center;padding:2px 4px">
+        HKD OUTDOOR INNOVATIONS LTD
+      </td>
+    </tr>
+  </table>
+
+  <!-- ② Section label -->
+  <table style="margin-bottom:2px">
+    <tr>
+      <td style="border:1px solid #000;font-weight:bold;font-size:8px;text-align:center;padding:2px 4px;background:#FFFF00">
+        MACHINE LAYOUT
+      </td>
+    </tr>
+  </table>
+
+  <!-- ③ Info + Image  — width:100%, image is right 18% -->
+  <table style="margin-bottom:3px;table-layout:fixed">
+    <colgroup>
+      <col style="width:82%">
+      <col style="width:18%">
+    </colgroup>
+    <tr>
+      <td style="padding:0;vertical-align:top">
+        <table style="width:100%;border-collapse:collapse;table-layout:fixed">
+          <colgroup>
+            <col style="width:12%"><col style="width:26%"><col style="width:8%">
+            <col style="width:32%"><col style="width:22%">
+          </colgroup>
+          <tbody>${infoRows}</tbody>
+        </table>
+      </td>
+      <td style="border:1px solid #000;text-align:center;vertical-align:middle;padding:2px">
+        ${sketchImg}
+      </td>
+    </tr>
+  </table>
+
+  <!-- ④ Process table — width:100%, right edge = right edge of image above -->
+  <table style="margin-bottom:3px;table-layout:fixed">
+    <colgroup>
+      <col style="width:4%">
+      <col style="width:30.5%">
+      <col style="width:13.5%">
+      <col style="width:3%">
+      <col style="width:4%">
+      <col style="width:30.5%">
+      <col style="width:14.5%">
+    </colgroup>
+    <thead>
       <tr>
-        <td style="border:1px solid #000;font-weight:bold;font-size:9px;text-align:center;padding:2px 4px">
-          HKD OUTDOOR INNOVATIONS LTD
-        </td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6.5px">SL</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6.5px">Process Name</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6.5px">Machine</td>
+        <td style="border:none;background:#fff"></td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6.5px">SL</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6.5px">Process Name</td>
+        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6.5px">Machine</td>
       </tr>
-    </table>
+    </thead>
+    <tbody>${processRows}</tbody>
+  </table>
 
-    <table style="width:100%;margin-bottom:2px">
-      <tr><td style="border:1px solid #000;font-weight:bold;font-size:8px;text-align:center;padding:2px 4px;background:#FFFF00">MACHINE LAYOUT</td></tr>
-    </table>
+  <!-- ⑤ Machine summary (left) + Signature (right) — width:100% fills to image edge -->
+  <table style="table-layout:fixed">
+    <colgroup>
+      <col style="width:38%">
+      <col style="width:4%">
+      <col style="width:58%">
+    </colgroup>
+    <tr style="vertical-align:top">
 
-    <!-- Info table + image side by side -->
-    <table style="width:100%;margin-bottom:4px;border-collapse:collapse">
-      <tr>
-        <!-- Info section -->
-        <td style="padding:0;vertical-align:top;width:82%">
-          <table style="width:100%;border-collapse:collapse">
-            <colgroup>
-              <col style="width:13%"><col style="width:28%"><col style="width:10%">
-              <col style="width:30%"><col style="width:19%">
-            </colgroup>
-            <tbody>${infoRows}</tbody>
-          </table>
-        </td>
-        <!-- Image section -->
-        <td style="border:1px solid #000;text-align:center;vertical-align:middle;padding:2px;width:18%">
-          ${sketchImg}
-        </td>
-      </tr>
-    </table>
+      <!-- Machine summary -->
+      <td style="padding:0;vertical-align:top">
+        <table style="width:100%;border-collapse:collapse">
+          <tr>
+            <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px;font-size:6.5px">Machine Name</td>
+            <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 3px;font-size:6.5px;width:16%">Qty</td>
+          </tr>
+          ${machRows}
+          <tr>
+            <td style="border:1px solid #000;font-weight:bold;padding:1px 3px;font-size:6.5px">Total</td>
+            <td style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 3px;font-size:6.5px">${machTotal}</td>
+          </tr>
+        </table>
+      </td>
 
-    <!-- Process table -->
-    <table style="width:100%;margin-bottom:5px">
-      <colgroup>
-        <col style="width:4%"><col style="width:28%"><col style="width:13%"><col style="width:2%">
-        <col style="width:4%"><col style="width:28%"><col style="width:13%"><col style="width:2%">
-        <col style="width:6%">
-      </colgroup>
-      <thead>
-        <tr>
-          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">SL</td>
-          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">Process Name</td>
-          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">Machine</td>
-          <td style="border:none"></td>
-          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">SL</td>
-          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">Process Name</td>
-          <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">Machine</td>
-          <td style="border:none"></td>
-        </tr>
-      </thead>
-      <tbody>${processRows}</tbody>
-    </table>
+      <!-- Spacer -->
+      <td style="padding:0"></td>
 
-    <!-- Machine summary -->
-    <table style="width:42%;margin-bottom:12px">
-      <tr>
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px">Machine Name</td>
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;background:#FFFF00;padding:1px 2px;font-size:6px;width:18%">Qty</td>
-      </tr>
-      ${machRows}
-      <tr style="height:12px">
-        <td style="border:1px solid #000;font-weight:bold;padding:1px 2px;font-size:6px">Total</td>
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 2px;font-size:6px">${machTotal}</td>
-      </tr>
-    </table>
+      <!-- Signature -->
+      <td style="padding:0;vertical-align:bottom">
+        <table style="width:100%;border-collapse:collapse">
+          <tr style="height:28px">
+            <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 3px;font-size:6.5px">Sr. Supervisor</td>
+            <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 3px;font-size:6.5px">Technician</td>
+            <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 3px;font-size:6.5px">IE Executive</td>
+            <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 3px;font-size:6.5px">Maintenance Supervisor</td>
+          </tr>
+        </table>
+      </td>
 
-    <!-- Signature row -->
-    <table style="width:100%">
-      <colgroup><col style="width:25%"><col style="width:25%"><col style="width:25%"><col style="width:25%"></colgroup>
-      <tr style="height:30px">
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px;font-size:6px">Sr. Supervisor</td>
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px;font-size:6px">Technician</td>
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px;font-size:6px">IE Executive</td>
-        <td style="border:1px solid #000;font-weight:bold;text-align:center;vertical-align:bottom;padding:2px 4px;font-size:6px">Maintenance Supervisor</td>
-      </tr>
-    </table>
+    </tr>
+  </table>
 
-  </div>
 </body>
 </html>`;
 
@@ -547,7 +579,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
 
   const sorted = [...processes].sort((a, b) => a.serialNo - b.serialNo);
 
-  // Group by serialNo — same serialNo → one visual cell
   const bySerial = {};
   sorted.forEach((p) => { if (!bySerial[p.serialNo]) bySerial[p.serialNo] = []; bySerial[p.serialNo].push(p); });
 
@@ -563,7 +594,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
   });
   const rows = Array.from(rowMap.entries()).sort((a, b) => a[0] - b[0]).map(([, v]) => v);
 
-  // FIX-1: compute targets live from layoutInfo fields
   const liveTargets = layoutInfo
     ? calcTargets(layoutInfo.smv, layoutInfo.planEfficiency, layoutInfo.operator, layoutInfo.helper, layoutInfo.seamSealing, layoutInfo.workingHours)
     : { manpower: 0, oneHourTarget: 0, dailyTarget: 0 };
@@ -571,7 +601,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
   const summary = {};
   sorted.forEach((p) => { const key = p.machineType || "?"; summary[key] = (summary[key] || 0) + (p.machines?.length || 1); });
 
-  // ── Duplicate serial detection ──────────────────────────────────────────────
   const serialProcessMap = {};
   sorted.forEach((p) => {
     (p.machines || []).forEach((m) => {
@@ -591,15 +620,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
   function handleDragLeave(e)         { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverKey(null); }
   function handleDragEnd()            { setDragOverKey(null); dragId.current = null; }
 
-  function handleDropOnProcess(e, targetId) {
-    e.preventDefault(); setDragOverKey(null);
-    const fromId = dragId.current; dragId.current = null;
-    if (!fromId || fromId === targetId) return;
-    const fromProc = processes.find((p) => p._id === fromId);
-    const toProc   = processes.find((p) => p._id === targetId);
-    if (fromProc && toProc) onSwapSerial(fromId, fromProc.serialNo, targetId, toProc.serialNo);
-  }
-
   function handleDropOnSlot(e, slotSerial) {
     e.preventDefault(); setDragOverKey(null);
     const fromId = dragId.current; dragId.current = null;
@@ -609,16 +629,12 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
     onMoveToSlot(fromId, slotSerial);
   }
 
-  // ── CHANGE 2: GroupedCell replaces ProcessCell + EmptySlot ─────────────────
-  // All processes sharing the same serialNo render inside ONE div.
-  // Each entry is separated by a dashed border. Each has its own waste button.
   function GroupedCell({ serialNo }) {
     const entries = bySerial[serialNo];
     const key     = `sn:${serialNo}`;
     const isOver  = dragOverKey === key;
 
     if (!entries) {
-      // Empty slot — same as original EmptySlot, just with key/drop target changed
       return (
         <div
           onDragOver={(e) => handleDragOverCell(e, key)}
@@ -669,7 +685,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
         <span className="absolute left-1 top-1/2 -translate-y-1/2 text-slate-300 text-xs select-none opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">⣿</span>
 
         <div className="px-4 py-2">
-          {/* Serial badge + fromFloor tags (collected across all entries) */}
           <div className="flex items-start gap-2 mb-1.5 flex-wrap">
             <span className="text-xs font-black px-2 py-0.5 rounded shrink-0"
               style={{ background: isOver ? "#1d4ed8" : c.badge, color: c.badgeText }}>
@@ -681,7 +696,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
             ))}
           </div>
 
-          {/* Each process entry stacked — separated by a dashed border */}
           {entries.map((entry, idx) => {
             const serials = (entry.machines || []).filter((m) => m.serialNumber).map((m) => m.serialNumber);
             return (
@@ -692,7 +706,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
                   borderBottom:  idx < entries.length - 1 ? `1px dashed ${c.accent}40` : "none",
                   position: "relative",
                 }}>
-                {/* Per-entry waste button (shown on hover) */}
                 <button
                   onClick={(e) => { e.stopPropagation(); setWasteTarget(entry); }}
                   title="Waste"
@@ -746,7 +759,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
       </div>
     );
   }
-  // ── END CHANGE 2 ────────────────────────────────────────────────────────────
 
   return (
     <div className="w-full h-full overflow-auto bg-white relative">
@@ -771,7 +783,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
                 { label: "SMV",           value: layoutInfo.smv },
                 { label: "Plan Eff.",     value: `${layoutInfo.planEfficiency}%` },
                 { label: "Op + Hel + SS", value: `${layoutInfo.operator}+${layoutInfo.helper}+${layoutInfo.seamSealing}` },
-                // FIX-1: show live-computed targets instead of stored ones
                 { label: "Manpower",      value: liveTargets.manpower },
                 { label: "Working Hrs",   value: `${layoutInfo.workingHours}h` },
                 { label: "1 Hour Tgt",    value: liveTargets.oneHourTarget },
@@ -803,7 +814,6 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
               </span>
             );
           })}
-          {/* Duplicate serial alert pill */}
           {duplicateSerials.size > 0 && (
             <span className="ml-auto flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border-2 border-amber-400 bg-amber-50 text-amber-700 animate-pulse">
               ⚠ {duplicateSerials.size} duplicate serial{duplicateSerials.size > 1 ? "s" : ""}: {[...duplicateSerials].join(", ")}
@@ -904,7 +914,6 @@ export default function LineLayoutPage() {
   const [loadingPNames, setLoadingPNames] = React.useState(false);
   const [showAddPName,  setShowAddPName]  = React.useState(false);
 
-  // ── Delete layout state ──
   const [deleteTarget,  setDeleteTarget]  = useState(null);
   const [machineFloors, setMachineFloors] = useState({});
   const [deleting,      setDeleting]      = useState(false);
@@ -1207,8 +1216,6 @@ export default function LineLayoutPage() {
             <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4">
               <div className="bg-white border border-slate-300 rounded-2xl w-full max-w-2xl shadow-2xl flex flex-col max-h-[90vh]">
                 <div className="h-1 bg-gradient-to-r from-red-500 to-rose-600 rounded-t-2xl shrink-0" />
-
-                {/* Header */}
                 <div className="px-6 pt-5 pb-4 border-b border-slate-200 shrink-0">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 text-xl shrink-0">🗑</div>
@@ -1218,8 +1225,6 @@ export default function LineLayoutPage() {
                     </div>
                   </div>
                 </div>
-
-                {/* Body */}
                 <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-0">
                   {!hasMachines ? (
                     <div className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-600">
@@ -1231,27 +1236,20 @@ export default function LineLayoutPage() {
                         <p className="text-sm font-bold text-amber-800 mb-0.5">⚠ {allMachines.length} machine(s) assigned — select return floor for each</p>
                         <p className="text-xs text-amber-700">Each machine will be returned to Idle on its chosen floor.</p>
                       </div>
-
-                      {/* Bulk apply row */}
                       <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
                         <span className="text-xs font-bold text-slate-500 uppercase tracking-widest shrink-0">Apply all →</span>
-                        <select
-                          defaultValue=""
-                          onChange={(e) => { if (e.target.value) applyAllFloors(e.target.value); }}
+                        <select defaultValue="" onChange={(e) => { if (e.target.value) applyAllFloors(e.target.value); }}
                           className="flex-1 bg-white border border-slate-300 text-slate-700 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-red-400">
                           <option value="">— Set all to same floor —</option>
                           {FLOOR_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
                         </select>
                       </div>
-
-                      {/* Per-machine rows */}
                       <div className="space-y-2">
                         {allMachines.map((m) => {
                           const c   = mc(m.machineType);
                           const sel = machineFloors[m.serialNumber] || "";
                           return (
-                            <div key={m.serialNumber}
-                              className="flex items-center gap-3 rounded-xl border px-3 py-2.5"
+                            <div key={m.serialNumber} className="flex items-center gap-3 rounded-xl border px-3 py-2.5"
                               style={{ background: c.bg, borderColor: `${c.accent}40` }}>
                               <span className="font-mono font-black text-sm px-2.5 py-1 rounded-lg shrink-0"
                                 style={{ background: c.accent, color: "#fff" }}>{m.serialNumber}</span>
@@ -1262,8 +1260,7 @@ export default function LineLayoutPage() {
                                 </p>
                               </div>
                               <span className="text-slate-400 text-sm shrink-0">→</span>
-                              <select
-                                value={sel}
+                              <select value={sel}
                                 onChange={(e) => setMachineFloors((prev) => ({ ...prev, [m.serialNumber]: e.target.value }))}
                                 className={`w-32 shrink-0 border rounded-lg px-2 py-1.5 text-sm focus:outline-none transition-colors
                                   ${sel ? "bg-white border-emerald-400 text-emerald-700 font-bold" : "bg-white border-red-300 text-red-500 font-semibold"}`}>
@@ -1275,8 +1272,6 @@ export default function LineLayoutPage() {
                           );
                         })}
                       </div>
-
-                      {/* Progress summary */}
                       <div className="flex items-center gap-2 text-xs">
                         <div className="flex-1 bg-slate-200 rounded-full h-1.5 overflow-hidden">
                           <div className="bg-emerald-500 h-full rounded-full transition-all"
@@ -1289,12 +1284,8 @@ export default function LineLayoutPage() {
                     </div>
                   )}
                 </div>
-
-                {/* Footer */}
                 <div className="px-6 pb-5 pt-3 border-t border-slate-200 shrink-0 flex gap-3">
-                  <button
-                    onClick={handleDeleteLayout}
-                    disabled={deleting || (hasMachines && !allFilled)}
+                  <button onClick={handleDeleteLayout} disabled={deleting || (hasMachines && !allFilled)}
                     className="flex-1 bg-red-500 hover:bg-red-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all">
                     {deleting ? "Deleting..." : "🗑 Confirm Delete"}
                   </button>
@@ -1443,7 +1434,6 @@ export default function LineLayoutPage() {
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                 {layouts.map((l) => {
-                  // FIX-1: compute live targets for list cards too
                   const live = calcTargets(l.smv, l.planEfficiency, l.operator, l.helper, l.seamSealing, l.workingHours);
                   return (
                     <div key={l._id} className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-blue-300 hover:shadow-md transition-all">
@@ -1570,7 +1560,6 @@ export default function LineLayoutPage() {
         {/* BUILDER VIEW */}
         {view === "builder" && currentLayout && (
           <div className="flex flex-1 overflow-hidden min-h-0">
-            {/* Left panel */}
             <div className="w-[440px] shrink-0 border-r-2 border-slate-200 flex flex-col bg-white shadow-sm overflow-hidden">
               <div className="flex border-b-2 border-slate-200 shrink-0">
                 {[{ key:"edit", label:"✏️ Edit" }, { key:"process", label:"＋ Process" }, { key:"list", label:"☰ List" }].map((t) => (
@@ -1581,7 +1570,6 @@ export default function LineLayoutPage() {
                 ))}
               </div>
 
-              {/* TAB: EDIT */}
               {builderTab === "edit" && (
                 <div className="flex-1 overflow-y-auto min-h-0">
                   <div className="bg-blue-50 border-b border-blue-200 px-4 py-3">
@@ -1662,7 +1650,6 @@ export default function LineLayoutPage() {
                 </div>
               )}
 
-              {/* TAB: ADD PROCESS */}
               {builderTab === "process" && (
                 <div className="flex-1 overflow-y-auto min-h-0 p-4 space-y-4">
                   <p className="text-sm text-slate-500 uppercase tracking-widest font-bold">Add Process</p>
@@ -1697,7 +1684,6 @@ export default function LineLayoutPage() {
                 </div>
               )}
 
-              {/* TAB: PROCESS LIST */}
               {builderTab === "list" && (
                 <div className="flex-1 overflow-y-auto min-h-0 p-4">
                   <p className="text-sm text-slate-400 uppercase tracking-widest mb-3 font-bold">Added Processes ({currentLayout.processes?.length || 0})</p>
@@ -1745,7 +1731,6 @@ export default function LineLayoutPage() {
               )}
             </div>
 
-            {/* RIGHT — Layout Grid */}
             <div className="flex-1 overflow-hidden flex flex-col min-h-0 bg-white">
               <div className="px-4 py-2.5 border-b-2 border-slate-200 bg-slate-50 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-2">

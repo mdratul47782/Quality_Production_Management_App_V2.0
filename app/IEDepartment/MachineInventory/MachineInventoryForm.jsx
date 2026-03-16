@@ -59,6 +59,13 @@ const STATUS_BADGE_MINI = {
   Damage:     "bg-red-950 border-red-800 text-red-300",
 };
 
+const STATUS_DOT = {
+  Running:    "#10b981",
+  Idle:       "#f59e0b",
+  Repairable: "#f97316",
+  Damage:     "#ef4444",
+};
+
 const MACHINE_COLORS = {
   "SINGLE NDL (PLAIN M/C)":            { bg:"#dbeafe", accent:"#1d4ed8", text:"#1e3a5f", badge:"#1d4ed8" },
   "SINGLE NDL (TOP FEED) M/C":         { bg:"#dbeafe", accent:"#1d4ed8", text:"#1e3a5f", badge:"#1d4ed8" },
@@ -82,7 +89,7 @@ function mc(type) { return MACHINE_COLORS[type] || MACHINE_COLORS["default"]; }
 function Toast({ toast }) {
   if (!toast) return null;
   return (
-    <div className={`fixed top-5 right-5 z-50 px-5 py-3 rounded-lg text-sm font-semibold shadow-2xl border transition-all duration-300 ${
+    <div className={`fixed top-5 right-5 z-[200] px-5 py-3 rounded-xl text-sm font-semibold shadow-2xl border transition-all duration-300 ${
       toast.type === "success"
         ? "bg-emerald-950 border-emerald-500 text-emerald-300"
         : "bg-red-950 border-red-500 text-red-300"
@@ -92,7 +99,7 @@ function Toast({ toast }) {
   );
 }
 
-// ─── ProcessCard (inside the layout modal grid) ───────────────────────────────
+// ─── ProcessCard ──────────────────────────────────────────────────────────────
 function ProcessCard({ proc, searchedSerial, isMatched }) {
   const c = mc(proc.machineType);
   const serials = (proc.machines || []).map((m) => m.serialNumber).filter(Boolean);
@@ -110,7 +117,6 @@ function ProcessCard({ proc, searchedSerial, isMatched }) {
           letterSpacing: "0.08em", padding: "1px 7px",
           borderRadius: "0 0 6px 6px", textTransform: "uppercase",
         }}>◉ This Machine</div>
-
         <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap", marginBottom:6, marginTop:8 }}>
           <span style={{ background:"#f59e0b", color:"#fff", fontSize:10, fontWeight:900, padding:"1px 8px", borderRadius:4 }}>
             #{proc.serialNo}
@@ -119,8 +125,8 @@ function ProcessCard({ proc, searchedSerial, isMatched }) {
             const isThis = sn.toUpperCase() === (searchedSerial || "").toUpperCase();
             return (
               <span key={sn} style={{
-                fontFamily: "monospace", fontSize: isThis ? 11 : 10, fontWeight: 900,
-                padding: isThis ? "2px 10px" : "1px 7px", borderRadius: 20,
+                fontFamily:"monospace", fontSize: isThis ? 11 : 10, fontWeight:900,
+                padding: isThis ? "2px 10px" : "1px 7px", borderRadius:20,
                 background: isThis ? "#f59e0b" : "#fde68a",
                 color: isThis ? "#fff" : "#92400e",
                 border: isThis ? "2px solid #d97706" : "1px solid #fcd34d",
@@ -139,7 +145,8 @@ function ProcessCard({ proc, searchedSerial, isMatched }) {
 
   return (
     <div style={{
-      background: c.bg, borderLeft: `4px solid ${c.accent}`,
+      background: c.bg,
+      borderLeft: `4px solid ${c.accent}`,
       border: `1px solid ${c.accent}20`, borderLeftWidth:4, borderLeftStyle:"solid", borderLeftColor:c.accent,
       borderRadius:6, padding:"8px 10px", opacity:0.82,
     }}>
@@ -195,14 +202,12 @@ function LineLayoutModal({ serialNumber, factory, onClose }) {
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/75 z-[60] backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 bg-black/80 z-[60] backdrop-blur-sm" onClick={onClose} />
       <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 pointer-events-none">
-        <div className="pointer-events-auto flex flex-col bg-[#0f1117] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden font-mono"
+        <div className="pointer-events-auto flex flex-col bg-[#0a0d14] border border-slate-700/60 rounded-2xl shadow-2xl overflow-hidden font-mono"
           style={{ width:"min(780px, 96vw)", maxHeight:"92vh" }}>
-          <div className="h-1 w-full shrink-0 bg-gradient-to-r from-violet-500 via-amber-400 to-cyan-400" />
-
-          {/* Header */}
-          <div className="flex items-center justify-between px-5 pt-4 pb-4 border-b border-slate-800 shrink-0">
+          <div className="h-0.5 w-full shrink-0 bg-gradient-to-r from-violet-500 via-amber-400 to-cyan-400" />
+          <div className="flex items-center justify-between px-5 pt-4 pb-4 border-b border-slate-800/80 shrink-0">
             <div className="flex items-center gap-3">
               <span className="text-xl">📐</span>
               <div>
@@ -214,8 +219,6 @@ function LineLayoutModal({ serialNumber, factory, onClose }) {
             </div>
             <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-all font-bold text-base">✕</button>
           </div>
-
-          {/* Body */}
           <div className="flex-1 overflow-y-auto min-h-0">
             {loading && (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
@@ -223,7 +226,6 @@ function LineLayoutModal({ serialNumber, factory, onClose }) {
                 <p className="text-slate-500 text-xs animate-pulse">Searching line layouts...</p>
               </div>
             )}
-
             {!loading && !data && (
               <div className="flex flex-col items-center justify-center py-16 gap-3">
                 <span className="text-5xl">📭</span>
@@ -233,11 +235,9 @@ function LineLayoutModal({ serialNumber, factory, onClose }) {
                 </p>
               </div>
             )}
-
             {!loading && data && layout && (
               <div>
-                {/* Layout info bar */}
-                <div className="px-5 py-3 border-b border-slate-800 bg-[#161b27]">
+                <div className="px-5 py-3 border-b border-slate-800 bg-[#0d111c]">
                   <div className="flex flex-wrap gap-2 mb-3">
                     {layout.factory && (
                       <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-violet-950 border border-violet-700 text-violet-300">🏭 {layout.factory}</span>
@@ -257,9 +257,7 @@ function LineLayoutModal({ serialNumber, factory, onClose }) {
                     )}
                   </div>
                 </div>
-
-                {/* Legend */}
-                <div className="px-5 py-2.5 border-b border-slate-800 flex items-center gap-4 bg-[#0f1117]">
+                <div className="px-5 py-2.5 border-b border-slate-800 flex items-center gap-4 bg-[#0a0d14]">
                   <div className="flex items-center gap-1.5">
                     <div className="w-3 h-3 rounded-sm bg-amber-400" />
                     <span className="text-[10px] text-amber-300 font-bold uppercase tracking-widest">Searched machine</span>
@@ -268,10 +266,8 @@ function LineLayoutModal({ serialNumber, factory, onClose }) {
                     <div className="w-3 h-3 rounded-sm bg-blue-700 opacity-50" />
                     <span className="text-[10px] text-slate-400 uppercase tracking-widest">Other processes</span>
                   </div>
-                  <span className="text-[10px] text-slate-600 ml-auto">Left ← Serial → Right (2-column)</span>
+                  <span className="text-[10px] text-slate-600 ml-auto">Left ← Serial → Right</span>
                 </div>
-
-                {/* 2-column grid */}
                 <div className="px-4 py-4">
                   <div className="grid grid-cols-2 gap-3 mb-3">
                     <div className="text-center text-[10px] font-black uppercase tracking-widest py-1.5 rounded-lg bg-blue-900/60 text-blue-300 border border-blue-800">← LEFT SIDE</div>
@@ -306,8 +302,6 @@ function LineLayoutModal({ serialNumber, factory, onClose }) {
               </div>
             )}
           </div>
-
-          {/* Footer */}
           <div className="px-5 pb-4 pt-3 border-t border-slate-800 shrink-0">
             <button onClick={onClose} className="w-full py-2.5 border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 rounded-xl text-xs font-bold uppercase tracking-widest transition-all">
               Close
@@ -319,12 +313,152 @@ function LineLayoutModal({ serialNumber, factory, onClose }) {
   );
 }
 
+// ─── Suggestion Dropdown Portal ───────────────────────────────────────────────
+// Renders as a fixed overlay so it is NEVER clipped by any parent overflow/height.
+function SuggestionDropdown({ suggestions, highlightIdx, query, onPick, onHover, dropdownRef, anchorRef }) {
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+
+  // Reposition whenever visible
+  useEffect(() => {
+    if (!anchorRef.current) return;
+    const rect = anchorRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    const spaceAbove = rect.top - 8;
+    const maxH = Math.max(Math.min(spaceBelow, 400), Math.min(spaceAbove, 400));
+    const openUpward = spaceBelow < 180 && spaceAbove > spaceBelow;
+
+    setPos({
+      left:    rect.left,
+      width:   rect.width,
+      top:     openUpward ? undefined : rect.bottom + 6,
+      bottom:  openUpward ? window.innerHeight - rect.top + 6 : undefined,
+      maxHeight: Math.max(maxH, 200),
+      openUpward,
+    });
+  }, [suggestions, anchorRef]);
+
+  if (!suggestions.length) return null;
+
+  return (
+    <div
+      ref={dropdownRef}
+      style={{
+        position:  "fixed",
+        left:      pos.left,
+        top:       pos.top,
+        bottom:    pos.bottom,
+        width:     pos.width,
+        maxHeight: pos.maxHeight,
+        zIndex:    9999,
+        display:   "flex",
+        flexDirection: "column",
+      }}
+      className="bg-[#12161f] border border-slate-600/80 rounded-2xl shadow-[0_8px_48px_rgba(0,0,0,0.7)] overflow-hidden"
+    >
+      {/* Header bar */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-slate-700/60 bg-[#0d1017] shrink-0">
+        <div className="flex items-center gap-2">
+          <svg className="w-3 h-3 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <span className="text-[10px] text-cyan-400 font-bold uppercase tracking-widest">
+            {suggestions.length} result{suggestions.length !== 1 ? "s" : ""}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-[9px] text-slate-600">
+          <kbd className="bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-slate-500">↑↓</kbd>
+          <span>navigate</span>
+          <kbd className="bg-slate-800 border border-slate-700 rounded px-1 py-0.5 text-slate-500">↵</kbd>
+          <span>select</span>
+        </div>
+      </div>
+
+      {/* Scrollable list — takes all remaining height */}
+      <div className="overflow-y-auto flex-1 overscroll-contain" style={{ scrollbarWidth: "thin", scrollbarColor: "#334155 transparent" }}>
+        {suggestions.map((u, idx) => {
+          const c   = mc(u.machineName);
+          const q   = query.trim().toUpperCase();
+          const sn  = u.serialNumber.toUpperCase();
+          const pos2 = sn.indexOf(q);
+          const before = pos2 >= 0 ? u.serialNumber.slice(0, pos2) : u.serialNumber;
+          const match  = pos2 >= 0 ? u.serialNumber.slice(pos2, pos2 + q.length) : "";
+          const after  = pos2 >= 0 ? u.serialNumber.slice(pos2 + q.length) : "";
+          const isHi   = idx === highlightIdx;
+
+          return (
+            <button
+              key={u.serialNumber}
+              type="button"
+              onMouseEnter={() => onHover(idx)}
+              onMouseDown={(e) => { e.preventDefault(); onPick(u); }}
+              style={{ borderLeft: isHi ? `3px solid ${c.accent}` : "3px solid transparent" }}
+              className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-all border-b border-slate-800/50 last:border-0 focus:outline-none
+                ${isHi ? "bg-slate-700/50" : "hover:bg-slate-800/40"}`}
+            >
+              {/* Accent dot */}
+              <div
+                className="w-2.5 h-2.5 rounded-full shrink-0 ring-1 ring-offset-1 ring-offset-[#12161f]"
+                style={{ background: c.accent, ringColor: c.accent }}
+              />
+
+              {/* Serial number with highlighted match */}
+              <div className="flex-1 min-w-0">
+                <div className="font-mono font-bold text-sm mb-0.5">
+                  <span className="text-slate-300">{before}</span>
+                  {match && (
+                    <span
+                      className="rounded px-0.5 mx-px"
+                      style={{ color: "#fbbf24", background: "rgba(251,191,36,0.15)" }}
+                    >{match}</span>
+                  )}
+                  <span className="text-slate-300">{after}</span>
+                </div>
+                {/* Machine name */}
+                <div className="text-[10px] text-slate-500 truncate">
+                  {u.machineName}
+                </div>
+              </div>
+
+              {/* Right side: floor + status */}
+              <div className="flex flex-col items-end gap-1 shrink-0">
+                <span className="text-[10px] font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700">
+                  {u.floorName}
+                </span>
+                <span
+                  className="text-[9px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1"
+                  style={{
+                    color: STATUS_DOT[u.status],
+                    borderColor: `${STATUS_DOT[u.status]}40`,
+                    background: `${STATUS_DOT[u.status]}12`,
+                  }}
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full inline-block"
+                    style={{ background: STATUS_DOT[u.status] }}
+                  />
+                  {u.status}
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Footer hint */}
+      <div className="px-4 py-1.5 border-t border-slate-800/60 bg-[#0d1017] shrink-0 flex items-center justify-between">
+        <span className="text-[9px] text-slate-600">Click or press Enter to load</span>
+        <kbd className="bg-slate-800 border border-slate-700 rounded px-1.5 py-0.5 text-[9px] text-slate-500">Esc</kbd>
+      </div>
+    </div>
+  );
+}
+
 // ─── Serial Search Tab ────────────────────────────────────────────────────────
 function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
   const [query,          setQuery]          = useState("");
-  const [searching,      setSearching]      = useState(false);
   const [result,         setResult]         = useState(null);
   const [notFound,       setNotFound]       = useState(false);
+  const [searching,      setSearching]      = useState(false);
   const [editFloor,      setEditFloor]      = useState("");
   const [editStatus,     setEditStatus]     = useState("Running");
   const [saving,         setSaving]         = useState(false);
@@ -332,18 +466,21 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
   const [showModal,      setShowModal]      = useState(false);
   const [searchedSerial, setSearchedSerial] = useState("");
 
-  // ── Autocomplete suggestion state ──
-  const [allUnits,     setAllUnits]     = useState([]);   // flat list of {serialNumber, machineName, floorName, status}
-  const [suggestions,  setSuggestions]  = useState([]);   // filtered suggestions shown in dropdown
+  const [allUnits,     setAllUnits]     = useState([]);
+  const [suggestions,  setSuggestions]  = useState([]);
   const [showSuggest,  setShowSuggest]  = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState(-1);
   const [loadingUnits, setLoadingUnits] = useState(false);
-  const inputRef  = useRef(null);
-  const suggestRef = useRef(null);
 
-  // Load all units once (for suggestions)
+  const inputRef     = useRef(null);
+  const dropdownRef  = useRef(null);
+  const anchorRef    = useRef(null);   // wraps the input row — used for positioning
+  const searchGuard  = useRef(false);
+
+  // ── Load all units once ───────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
-    const load = async () => {
+    (async () => {
       setLoadingUnits(true);
       try {
         const qs  = factory ? `?factory=${encodeURIComponent(factory)}` : "";
@@ -353,55 +490,45 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
           const flat = [];
           for (const machine of (json.data || [])) {
             for (const unit of (machine.units || [])) {
-              flat.push({
-                serialNumber: unit.serialNumber,
-                machineName:  machine.machineName,
-                floorName:    unit.floorName,
-                status:       unit.status,
-              });
+              flat.push({ serialNumber: unit.serialNumber, machineName: machine.machineName, floorName: unit.floorName, status: unit.status });
             }
           }
-          // Sort alphabetically
           flat.sort((a, b) => a.serialNumber.localeCompare(b.serialNumber));
           setAllUnits(flat);
         }
-      } catch { /* silent */ }
+      } catch {/* silent */}
       finally  { if (!cancelled) setLoadingUnits(false); }
-    };
-    load();
+    })();
     return () => { cancelled = true; };
   }, [factory]);
 
-  // Filter suggestions whenever query changes
+  // ── Filter on keystroke ───────────────────────────────────────────────────
   useEffect(() => {
     const q = query.trim().toUpperCase();
-    if (!q || q.length < 1) { setSuggestions([]); setShowSuggest(false); return; }
-    // Already exact match → no suggestions needed
-    if (allUnits.some((u) => u.serialNumber.toUpperCase() === q)) {
-      setSuggestions([]); setShowSuggest(false); return;
-    }
-    const matched = allUnits
-      .filter((u) => u.serialNumber.toUpperCase().includes(q))
-      .slice(0, 8); // max 8 suggestions
+    if (!q) { setSuggestions([]); setShowSuggest(false); setHighlightIdx(-1); return; }
+    const matched = allUnits.filter((u) => u.serialNumber.toUpperCase().includes(q));
     setSuggestions(matched);
     setShowSuggest(matched.length > 0);
+    setHighlightIdx(-1);
   }, [query, allUnits]);
 
-  // Close suggestions on outside click
+  // ── Close on outside click ────────────────────────────────────────────────
   useEffect(() => {
     function h(e) {
-      if (suggestRef.current && !suggestRef.current.contains(e.target) &&
-          inputRef.current && !inputRef.current.contains(e.target)) {
-        setShowSuggest(false);
-      }
+      if (
+        dropdownRef.current && !dropdownRef.current.contains(e.target) &&
+        anchorRef.current   && !anchorRef.current.contains(e.target)
+      ) { setShowSuggest(false); }
     }
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
-  const handleSearch = useCallback(async (overrideSN) => {
-    const sn = (overrideSN || query).trim().toUpperCase();
-    if (!sn) return;
+  // ── Core search ───────────────────────────────────────────────────────────
+  const doSearch = useCallback(async (sn) => {
+    const serial = (sn || "").trim().toUpperCase();
+    if (!serial || searchGuard.current) return;
+    searchGuard.current = true;
     setShowSuggest(false);
     setSearching(true);
     setResult(null);
@@ -415,24 +542,36 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
       if (!json.success) { setNotFound(true); return; }
       let found = null;
       for (const machine of (json.data || [])) {
-        const unit = (machine.units || []).find((u) => u.serialNumber.toUpperCase() === sn);
+        const unit = (machine.units || []).find((u) => u.serialNumber.toUpperCase() === serial);
         if (unit) { found = { machine, unit }; break; }
       }
       if (found) {
         setResult(found);
         setEditFloor(found.unit.floorName);
         setEditStatus(found.unit.status);
-        setSearchedSerial(sn);
+        setSearchedSerial(serial);
       } else { setNotFound(true); }
-    } finally { setSearching(false); }
-  }, [query, factory]);
+    } finally { setSearching(false); searchGuard.current = false; }
+  }, [factory]);
 
-  // Pick a suggestion
-  const pickSuggestion = (sn) => {
-    setQuery(sn);
-    setSuggestions([]);
-    setShowSuggest(false);
-    handleSearch(sn);
+  const pickSuggestion = useCallback((u) => {
+    setQuery(u.serialNumber);
+    setSuggestions([]); setShowSuggest(false); setHighlightIdx(-1);
+    doSearch(u.serialNumber);
+  }, [doSearch]);
+
+  const handleKeyDown = (e) => {
+    if (!showSuggest || !suggestions.length) {
+      if (e.key === "Enter") { e.preventDefault(); doSearch(query); }
+      return;
+    }
+    if (e.key === "ArrowDown") { e.preventDefault(); setHighlightIdx((p) => Math.min(p + 1, suggestions.length - 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setHighlightIdx((p) => Math.max(p - 1, -1)); }
+    else if (e.key === "Enter") {
+      e.preventDefault();
+      if (highlightIdx >= 0 && suggestions[highlightIdx]) pickSuggestion(suggestions[highlightIdx]);
+      else doSearch(query);
+    } else if (e.key === "Escape") { setShowSuggest(false); setHighlightIdx(-1); }
   };
 
   const handleSave = async () => {
@@ -453,7 +592,7 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
   };
 
   const handleDelete = async () => {
-    if (!result || !confirm(`"${result.unit.serialNumber}" Delete?`)) return;
+    if (!result || !confirm(`Delete "${result.unit.serialNumber}"?`)) return;
     setDeleting(true);
     try {
       const res  = await fetch("/api/machines", {
@@ -478,217 +617,249 @@ function SerialSearchTab({ factory, onSaveSuccess, showToast }) {
         <LineLayoutModal serialNumber={searchedSerial} factory={factory} onClose={() => setShowModal(false)} />
       )}
 
-      <div className="p-7 space-y-5">
-        {/* Search with autocomplete */}
+      <div className="p-6 space-y-5">
+
+        {/* ── SEARCH BOX ─────────────────────────────────────────────────── */}
         <div>
-          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">
-            Search by Serial Number
+          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-[0.18em] mb-2.5">
+            Serial Number Search
           </label>
-          <div className="relative">
+
+          {/* Anchor wrapper — used to calculate dropdown position */}
+          <div ref={anchorRef} className="relative">
+
+            {/* Input + button row */}
             <div className="flex gap-2">
               <div className="relative flex-1">
+                {/* Search icon */}
+                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
+                  {searching ? (
+                    <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                    </svg>
+                  )}
+                </div>
+
                 <input
                   ref={inputRef}
                   type="text"
                   value={query}
                   onChange={(e) => {
-                    setQuery(e.target.value.toUpperCase());
+                    const v = e.target.value.toUpperCase();
+                    setQuery(v);
                     setResult(null); setNotFound(false); setSearchedSerial("");
                   }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") { handleSearch(); }
-                    if (e.key === "Escape") setShowSuggest(false);
-                    if (e.key === "ArrowDown" && showSuggest) {
-                      e.preventDefault();
-                      const first = suggestRef.current?.querySelector("button");
-                      if (first) first.focus();
-                    }
-                  }}
+                  onKeyDown={handleKeyDown}
                   onFocus={() => suggestions.length > 0 && setShowSuggest(true)}
-                  placeholder="e.g. SN-001"
+                  placeholder="Type to search serial…"
                   autoComplete="off"
-                  className="w-full bg-[#0f1117] border border-slate-700 text-white rounded-lg px-4 py-3 text-sm font-mono uppercase focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 transition-colors placeholder:text-slate-600"
+                  spellCheck={false}
+                  className={`w-full bg-[#0c1018] border text-white rounded-xl pl-10 pr-9 py-3.5 text-sm font-mono uppercase tracking-wide transition-all placeholder:text-slate-600 placeholder:normal-case placeholder:tracking-normal focus:outline-none
+                    ${showSuggest
+                      ? "border-cyan-500/70 ring-2 ring-cyan-500/15 shadow-[0_0_20px_rgba(6,182,212,0.08)]"
+                      : result
+                        ? "border-emerald-600/60 ring-1 ring-emerald-600/20"
+                        : notFound
+                          ? "border-red-700/60 ring-1 ring-red-700/20"
+                          : "border-slate-700/70 hover:border-slate-600 focus:border-cyan-500/70 focus:ring-2 focus:ring-cyan-500/15"
+                    }`}
                 />
 
-                {/* Suggestions dropdown */}
-                {showSuggest && suggestions.length > 0 && (
-                  <div
-                    ref={suggestRef}
-                    className="absolute left-0 right-0 top-full mt-1 z-50 bg-[#161b27] border border-slate-700 rounded-xl shadow-2xl overflow-hidden"
-                  >
-                    {/* Header */}
-                    <div className="px-3 py-1.5 border-b border-slate-800 flex items-center justify-between">
-                      <span className="text-[9px] text-slate-500 uppercase tracking-widest font-mono">
-                        {loadingUnits ? "Loading..." : `${suggestions.length} match${suggestions.length !== 1 ? "es" : ""}`}
-                      </span>
-                      <span className="text-[9px] text-slate-600">↵ to select</span>
-                    </div>
-
-                    {/* Suggestion rows */}
-                    <div className="max-h-52 overflow-y-auto">
-                      {suggestions.map((u, idx) => {
-                        const c = mc(u.machineName);
-                        // Highlight the matching part of the serial number
-                        const q   = query.trim().toUpperCase();
-                        const sn  = u.serialNumber.toUpperCase();
-                        const pos = sn.indexOf(q);
-                        const before  = u.serialNumber.slice(0, pos);
-                        const match   = u.serialNumber.slice(pos, pos + q.length);
-                        const after   = u.serialNumber.slice(pos + q.length);
-
-                        return (
-                          <button
-                            key={u.serialNumber}
-                            type="button"
-                            onClick={() => pickSuggestion(u.serialNumber)}
-                            onKeyDown={(e) => {
-                              if (e.key === "ArrowDown") { e.preventDefault(); (e.currentTarget.nextSibling)?.focus(); }
-                              if (e.key === "ArrowUp")   { e.preventDefault(); (e.currentTarget.previousSibling || inputRef.current)?.focus(); }
-                              if (e.key === "Enter")     { e.preventDefault(); pickSuggestion(u.serialNumber); }
-                              if (e.key === "Escape")    { setShowSuggest(false); inputRef.current?.focus(); }
-                            }}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-slate-800/70 text-left transition-colors border-b border-slate-800/50 last:border-0 focus:outline-none focus:bg-slate-800/70"
-                          >
-                            {/* Color dot for machine type */}
-                            <div className="w-2 h-2 rounded-full shrink-0" style={{ background: c.accent }} />
-
-                            {/* Serial with highlighted match */}
-                            <span className="font-mono font-bold text-sm shrink-0">
-                              <span className="text-slate-400">{before}</span>
-                              <span className="text-amber-300 bg-amber-900/40 px-0.5 rounded">{match}</span>
-                              <span className="text-slate-400">{after}</span>
-                            </span>
-
-                            {/* Machine name — truncated */}
-                            <span className="text-[10px] text-slate-500 truncate flex-1 min-w-0">
-                              {u.machineName.split(" ").slice(0,3).join(" ")}
-                            </span>
-
-                            {/* Floor + Status */}
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="text-[9px] text-slate-500">{u.floorName}</span>
-                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full border ${STATUS_BADGE_MINI[u.status]}`}>
-                                {u.status}
-                              </span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
+                {/* Clear × */}
+                {query && !searching && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuery(""); setResult(null); setNotFound(false);
+                      setSearchedSerial(""); setSuggestions([]); setShowSuggest(false);
+                      inputRef.current?.focus();
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white text-xs transition-all"
+                  >✕</button>
                 )}
               </div>
 
+              {/* Search button */}
               <button
                 type="button"
-                onClick={() => handleSearch()}
+                onClick={() => doSearch(query)}
                 disabled={searching || !query.trim()}
-                className="px-5 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-bold rounded-lg text-sm transition-all shrink-0"
+                className="px-5 py-3.5 bg-cyan-600 hover:bg-cyan-500 active:bg-cyan-700 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold rounded-xl text-sm transition-all shrink-0 border border-cyan-500/30 disabled:border-slate-700"
               >
-                {searching ? "..." : "Search"}
+                {searching ? "…" : "Search"}
               </button>
             </div>
+
+            {/* Suggestion dropdown — fixed portal, never clipped */}
+            {showSuggest && (
+              <SuggestionDropdown
+                suggestions={suggestions}
+                highlightIdx={highlightIdx}
+                query={query}
+                onPick={pickSuggestion}
+                onHover={setHighlightIdx}
+                dropdownRef={dropdownRef}
+                anchorRef={anchorRef}
+              />
+            )}
+          </div>
+
+          {/* Status line below input */}
+          <div className="mt-1.5 flex items-center gap-2 px-1">
+            {loadingUnits ? (
+              <span className="text-[10px] text-cyan-400/60 animate-pulse font-mono">Loading serial index…</span>
+            ) : query && !showSuggest && !searching && !result && !notFound ? (
+              <span className="text-[10px] text-slate-600 font-mono">Press Enter or Search to look up</span>
+            ) : !query ? (
+              <span className="text-[10px] text-slate-600 font-mono">
+                {allUnits.length} serial{allUnits.length !== 1 ? "s" : ""} indexed
+              </span>
+            ) : null}
           </div>
         </div>
 
+        {/* ── NOT FOUND ────────────────────────────────────────────────────── */}
         {notFound && (
-          <div className="bg-[#0f1117] border border-slate-800 rounded-xl px-4 py-6 text-center">
-            <p className="text-3xl mb-2">🔍</p>
-            <p className="text-slate-400 text-sm">
-              <span className="font-mono text-white">{query.trim().toUpperCase()}</span> — No machine found.
-            </p>
+          <div className="flex items-center gap-4 bg-red-950/30 border border-red-800/50 rounded-xl px-4 py-4">
+            <span className="text-2xl shrink-0">🔍</span>
+            <div>
+              <p className="text-red-300 text-sm font-bold">No machine found</p>
+              <p className="text-red-400/60 text-xs mt-0.5 font-mono">{query.trim().toUpperCase()}</p>
+            </div>
           </div>
         )}
 
+        {/* ── RESULT CARD ──────────────────────────────────────────────────── */}
         {result && (
           <div className="space-y-4">
-            {/* Machine info card */}
-            <div className="bg-[#0f1117] border border-slate-800 rounded-xl p-4 space-y-2">
-              <p className="text-[10px] text-cyan-400 uppercase tracking-widest font-mono">found</p>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 text-xs">Serial</span>
-                <span className="text-white font-mono font-bold text-sm">{result.unit.serialNumber}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 text-xs">Machine</span>
-                <span className="text-slate-200 text-xs font-semibold text-right max-w-[200px]">{result.machine.machineName}</span>
-              </div>
-              <div className="flex justify-between items-center pt-1 border-t border-slate-800">
-                <span className="text-slate-500 text-xs">Current Floor</span>
-                <span className="text-white font-bold text-sm">{result.unit.floorName}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500 text-xs">Current Status</span>
-                <span className={`font-bold text-sm ${STATUS_TEXT_COLOR[result.unit.status]}`}>{result.unit.status}</span>
-              </div>
 
-              {/* Line Layout button */}
-              <div className="pt-2 border-t border-slate-800">
-                <button type="button" onClick={() => setShowModal(true)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-violet-800/70 bg-violet-950/30 hover:bg-violet-900/50 hover:border-violet-600 text-violet-300 transition-all group">
-                  <div className="flex items-center gap-2.5">
-                    <span className="text-base">📐</span>
-                    <div className="text-left">
-                      <p className="text-xs font-bold leading-tight">Line Layout Info</p>
-                      <p className="text-[10px] text-violet-400/60 leading-tight">View all processes — searched machine highlighted</p>
-                    </div>
+            {/* Info card */}
+            <div className="rounded-2xl border border-slate-700/50 overflow-hidden bg-[#0c1018]">
+              {/* Card header accent */}
+              <div className="h-0.5 bg-gradient-to-r from-cyan-500 to-emerald-500" />
+
+              <div className="p-4 space-y-0">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <p className="text-[10px] text-cyan-400 uppercase tracking-widest font-mono mb-1">Found</p>
+                    <p className="text-white font-mono font-bold text-lg leading-none">{result.unit.serialNumber}</p>
                   </div>
-                  <span className="text-violet-500 group-hover:translate-x-0.5 group-hover:text-violet-300 transition-all text-sm">→</span>
-                </button>
+                  <span
+                    className="text-xs font-bold px-3 py-1.5 rounded-full border flex items-center gap-1.5"
+                    style={{
+                      color: STATUS_DOT[result.unit.status],
+                      borderColor: `${STATUS_DOT[result.unit.status]}50`,
+                      background: `${STATUS_DOT[result.unit.status]}15`,
+                    }}
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_DOT[result.unit.status] }} />
+                    {result.unit.status}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-px bg-slate-800/60 rounded-xl overflow-hidden border border-slate-800/60">
+                  {[
+                    ["Machine", result.machine.machineName],
+                    ["Floor",   result.unit.floorName],
+                  ].map(([label, val]) => (
+                    <div key={label} className="bg-[#0c1018] px-3 py-2.5">
+                      <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-1">{label}</p>
+                      <p className="text-slate-200 text-xs font-semibold leading-snug">{val}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Line Layout button */}
+                <div className="pt-3 mt-3 border-t border-slate-800/60">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(true)}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-xl border border-violet-700/40 bg-violet-950/20 hover:bg-violet-900/40 hover:border-violet-600/60 text-violet-300 transition-all group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-lg">📐</span>
+                      <div className="text-left">
+                        <p className="text-xs font-bold leading-tight">View Line Layout</p>
+                        <p className="text-[10px] text-violet-400/50 leading-tight mt-0.5">See all processes · machine highlighted</p>
+                      </div>
+                    </div>
+                    <span className="text-violet-500 group-hover:translate-x-1 group-hover:text-violet-300 transition-all">→</span>
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* Edit section */}
-            <div className="space-y-3">
-              <p className="text-[10px] text-amber-400 uppercase tracking-widest font-mono">Change</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1.5">Floor</label>
-                  <div className="relative">
-                    <select value={editFloor} onChange={(e) => setEditFloor(e.target.value)}
-                      className="w-full bg-[#0f1117] border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm appearance-none focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 transition-colors">
-                      <option value="">— Floor —</option>
-                      {FLOOR_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-                    </select>
-                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs">▾</div>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-1.5">Status</label>
-                  <div className="relative">
-                    <select value={editStatus} onChange={(e) => setEditStatus(e.target.value)}
-                      className={`w-full bg-[#0f1117] border text-white rounded-lg px-3 py-2.5 text-sm appearance-none focus:outline-none focus:ring-1 transition-colors ${statusStyle.ring} ${statusStyle.border}`}>
-                      {STATUS_OPTIONS.map(({ value, label, icon }) => <option key={value} value={value}>{icon} {label}</option>)}
-                    </select>
-                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs">▾</div>
-                  </div>
-                </div>
-              </div>
+            <div className="rounded-2xl border border-slate-700/50 overflow-hidden bg-[#0c1018]">
+              <div className="h-0.5 bg-gradient-to-r from-amber-500 to-orange-500" />
+              <div className="p-4 space-y-3">
+                <p className="text-[10px] text-amber-400/80 uppercase tracking-widest font-mono">Edit</p>
 
-              {changed && (
-                <div className={`border rounded-xl px-4 py-3 ${statusStyle.badge}`}>
-                  <p className="text-[10px] uppercase tracking-widest opacity-60 mb-2">Change preview</p>
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="opacity-60">{result.unit.floorName}</span>
-                    <span className="opacity-40">→</span>
-                    <span className="font-bold">{editFloor}</span>
-                    <span className="opacity-40 mx-1">·</span>
-                    <span className="opacity-60">{result.unit.status}</span>
-                    <span className="opacity-40">→</span>
-                    <span className="font-bold">{editStatus}</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Floor</label>
+                    <div className="relative">
+                      <select
+                        value={editFloor}
+                        onChange={(e) => setEditFloor(e.target.value)}
+                        className="w-full bg-[#0a0d14] border border-slate-700 text-white rounded-lg px-3 py-2.5 text-sm appearance-none focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition-colors"
+                      >
+                        <option value="">— Floor —</option>
+                        {FLOOR_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                      </select>
+                      <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs">▾</div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5">Status</label>
+                    <div className="relative">
+                      <select
+                        value={editStatus}
+                        onChange={(e) => setEditStatus(e.target.value)}
+                        className={`w-full bg-[#0a0d14] border text-white rounded-lg px-3 py-2.5 text-sm appearance-none focus:outline-none focus:ring-1 transition-colors ${statusStyle.ring} ${statusStyle.border}`}
+                      >
+                        {STATUS_OPTIONS.map(({ value, label, icon }) => (
+                          <option key={value} value={value}>{icon} {label}</option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs">▾</div>
+                    </div>
                   </div>
                 </div>
-              )}
 
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={handleSave} disabled={saving || !editFloor || !changed}
-                  className="flex-1 bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-[#0f1117] font-bold py-2.5 rounded-xl text-sm transition-all">
-                  {saving ? "Saving..." : "✓ Update"}
-                </button>
-                <button type="button" onClick={handleDelete} disabled={deleting}
-                  className="px-4 bg-transparent border border-red-800 hover:border-red-500 text-red-400 hover:text-red-300 hover:bg-red-950/30 font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-40">
-                  {deleting ? "..." : "Delete"}
-                </button>
+                {changed && (
+                  <div className="flex items-center gap-3 bg-slate-800/50 border border-slate-700/50 rounded-xl px-4 py-3 text-xs font-mono">
+                    <span className="text-slate-500 shrink-0">Preview:</span>
+                    <span className="text-slate-400">{result.unit.floorName}</span>
+                    <span className="text-slate-600">→</span>
+                    <span className="text-white font-bold">{editFloor}</span>
+                    <span className="text-slate-700 mx-1">·</span>
+                    <span className="text-slate-400">{result.unit.status}</span>
+                    <span className="text-slate-600">→</span>
+                    <span className="font-bold" style={{ color: STATUS_DOT[editStatus] }}>{editStatus}</span>
+                  </div>
+                )}
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saving || !editFloor || !changed}
+                    className="flex-1 bg-cyan-500 hover:bg-cyan-400 active:bg-cyan-600 disabled:bg-slate-800 disabled:text-slate-600 text-[#0a0d14] font-bold py-2.5 rounded-xl text-sm transition-all border border-cyan-400/20 disabled:border-slate-700"
+                  >
+                    {saving ? "Saving…" : "✓ Update"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    className="px-4 bg-transparent border border-red-900 hover:border-red-600 text-red-500 hover:text-red-300 hover:bg-red-950/40 font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-40"
+                  >
+                    {deleting ? "…" : "Delete"}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -759,7 +930,7 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
   };
 
   const handleDelete = async () => {
-    if (!currentUnit || !confirm(`"${serialNumber}" Delete?`)) return;
+    if (!currentUnit || !confirm(`Delete "${serialNumber}"?`)) return;
     setDeleting(true);
     try {
       const res  = await fetch("/api/machines", {
@@ -788,12 +959,12 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
   const statusStyle = STATUS_STYLE[status] || STATUS_STYLE.Running;
 
   return (
-    <form onSubmit={handleSubmit} className="p-7 space-y-6">
+    <form onSubmit={handleSubmit} className="p-6 space-y-5">
       <div>
-        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Machine Name <span className="text-red-400">*</span></label>
+        <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-[0.18em] mb-2">Machine Name <span className="text-red-400">*</span></label>
         <div className="relative">
           <select value={machineName} onChange={(e) => setMachineName(e.target.value)}
-            className="w-full bg-[#0f1117] border border-slate-700 text-white rounded-lg px-4 py-3 text-sm appearance-none focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 transition-colors">
+            className="w-full bg-[#0c1018] border border-slate-700 text-white rounded-xl px-4 py-3.5 text-sm appearance-none focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition-colors">
             <option value="">— Select Machine —</option>
             {MACHINE_NAMES.map((m) => <option key={m} value={m}>{m}</option>)}
           </select>
@@ -802,8 +973,8 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
       </div>
 
       {machineName && (
-        <div className="bg-[#0f1117] border border-slate-800 rounded-xl overflow-hidden">
-          <div className="px-4 pt-4 pb-3 border-b border-slate-800">
+        <div className="bg-[#0c1018] border border-slate-700/60 rounded-2xl overflow-hidden">
+          <div className="px-4 pt-4 pb-3 border-b border-slate-800/60">
             <div className="flex items-center justify-between mb-3">
               <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">
                 {fetchingUnits
@@ -830,8 +1001,8 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs pointer-events-none">🔍</span>
               <input type="text" value={unitSearch} onChange={(e) => setUnitSearch(e.target.value)}
-                placeholder="Search serial number..."
-                className="w-full bg-[#161b27] border border-slate-700 text-white rounded-lg pl-8 pr-4 py-2 text-xs font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition-colors placeholder:text-slate-600" />
+                placeholder="Search serial..."
+                className="w-full bg-[#0a0d14] border border-slate-700/60 text-white rounded-lg pl-8 pr-4 py-2 text-xs font-mono focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition-colors placeholder:text-slate-600" />
               {unitSearch && <button type="button" onClick={() => setUnitSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs font-bold">✕</button>}
             </div>
           </div>
@@ -841,7 +1012,7 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
             ) : filteredUnits.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-slate-600 gap-2">
                 <span className="text-2xl">📭</span>
-                <span className="text-xs">{unitSearch || statusFilter !== "ALL" ? "No results found" : "No units added"}</span>
+                <span className="text-xs">{unitSearch || statusFilter !== "ALL" ? "No results" : "No units added"}</span>
               </div>
             ) : (
               <div className="p-3 grid grid-cols-1 gap-1">
@@ -849,12 +1020,18 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
                   const isSelected = serialNumber === u.serialNumber;
                   return (
                     <button key={u.serialNumber} type="button" onClick={() => setSerialNumber(u.serialNumber)}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg border text-left transition-all ${isSelected ? "bg-cyan-900/60 border-cyan-500 shadow-sm shadow-cyan-500/20" : "bg-[#161b27] border-slate-800 hover:border-slate-600 hover:bg-slate-800/60"}`}>
+                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-left transition-all ${isSelected ? "bg-cyan-900/50 border-cyan-500/60" : "bg-[#0a0d14] border-slate-800/60 hover:border-slate-600 hover:bg-slate-800/40"}`}>
                       <div className="flex items-center gap-3 min-w-0">
                         <span className={`text-xs font-mono font-bold shrink-0 ${isSelected ? "text-cyan-300" : "text-slate-200"}`}>{u.serialNumber}</span>
                         <span className={`text-[10px] shrink-0 ${isSelected ? "text-cyan-400/70" : "text-slate-500"}`}>{u.floorName}</span>
                       </div>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ml-2 ${STATUS_BADGE_MINI[u.status]}`}>{u.status}</span>
+                      <span
+                        className="text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ml-2 flex items-center gap-1"
+                        style={{ color: STATUS_DOT[u.status], borderColor: `${STATUS_DOT[u.status]}40`, background: `${STATUS_DOT[u.status]}12` }}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_DOT[u.status] }} />
+                        {u.status}
+                      </span>
                     </button>
                   );
                 })}
@@ -862,7 +1039,7 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
             )}
           </div>
           {(unitSearch || statusFilter !== "ALL") && !fetchingUnits && (
-            <div className="px-4 py-2 border-t border-slate-800 text-[10px] text-slate-500 font-mono">
+            <div className="px-4 py-2 border-t border-slate-800/60 text-[10px] text-slate-600 font-mono">
               {filteredUnits.length} / {existingUnits.length} showing
             </div>
           )}
@@ -870,32 +1047,32 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
       )}
 
       <div>
-        <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">
+        <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-[0.18em] mb-2">
           Serial Number <span className="text-red-400">*</span>
-          {isNew       && <span className="ml-2 text-cyan-400 normal-case tracking-normal font-normal">— New unit will be added</span>}
-          {currentUnit && <span className="ml-2 text-amber-400 normal-case tracking-normal font-normal">— Existing unit (will be updated)</span>}
+          {isNew       && <span className="ml-2 text-cyan-400 normal-case tracking-normal font-normal text-xs">— New unit</span>}
+          {currentUnit && <span className="ml-2 text-amber-400 normal-case tracking-normal font-normal text-xs">— Will update</span>}
         </label>
         <input type="text" value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)}
           placeholder="e.g. SN-001, M-042"
-          className={`w-full bg-[#0f1117] border text-white rounded-lg px-4 py-3 text-sm font-mono uppercase focus:outline-none focus:ring-1 transition-colors placeholder:text-slate-600 ${currentUnit ? "border-amber-700 focus:border-amber-500 focus:ring-amber-500/20" : "border-slate-700 focus:border-cyan-500 focus:ring-cyan-500/30"}`}
+          className={`w-full bg-[#0c1018] border text-white rounded-xl px-4 py-3.5 text-sm font-mono uppercase focus:outline-none focus:ring-1 transition-colors placeholder:text-slate-600 placeholder:normal-case ${currentUnit ? "border-amber-700/60 focus:border-amber-500 focus:ring-amber-500/20" : "border-slate-700 focus:border-cyan-500 focus:ring-cyan-500/20"}`}
         />
         {currentUnit && (
-          <div className="mt-2 flex items-center gap-3 bg-[#0f1117] border border-amber-900/50 rounded-lg px-4 py-2.5">
+          <div className="mt-2 flex items-center gap-3 bg-[#0c1018] border border-amber-900/30 rounded-xl px-4 py-2.5">
             <span className="text-slate-500 text-xs">Current:</span>
             <span className="text-white text-xs font-semibold">{currentUnit.floorName}</span>
-            <span className="text-slate-600">•</span>
-            <span className={`text-xs font-bold ${STATUS_TEXT_COLOR[currentUnit.status]}`}>{currentUnit.status}</span>
-            <span className="text-slate-600 ml-auto">→ Change below</span>
+            <span className="text-slate-700">·</span>
+            <span className="text-xs font-bold" style={{ color: STATUS_DOT[currentUnit.status] }}>{currentUnit.status}</span>
+            <span className="text-slate-600 ml-auto text-xs">→ change below</span>
           </div>
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Floor <span className="text-red-400">*</span></label>
+          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-[0.18em] mb-2">Floor <span className="text-red-400">*</span></label>
           <div className="relative">
             <select value={floorName} onChange={(e) => setFloorName(e.target.value)}
-              className="w-full bg-[#0f1117] border border-slate-700 text-white rounded-lg px-4 py-3 text-sm appearance-none focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/30 transition-colors">
+              className="w-full bg-[#0c1018] border border-slate-700 text-white rounded-xl px-4 py-3.5 text-sm appearance-none focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500/20 transition-colors">
               <option value="">— Floor —</option>
               {FLOOR_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
             </select>
@@ -903,10 +1080,10 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
           </div>
         </div>
         <div>
-          <label className="block text-xs font-semibold text-slate-400 uppercase tracking-widest mb-2">Status <span className="text-red-400">*</span></label>
+          <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-[0.18em] mb-2">Status <span className="text-red-400">*</span></label>
           <div className="relative">
             <select value={status} onChange={(e) => setStatus(e.target.value)}
-              className={`w-full bg-[#0f1117] border text-white rounded-lg px-4 py-3 text-sm appearance-none focus:outline-none focus:ring-1 transition-colors ${statusStyle.ring} ${statusStyle.border}`}>
+              className={`w-full bg-[#0c1018] border text-white rounded-xl px-4 py-3.5 text-sm appearance-none focus:outline-none focus:ring-1 transition-colors ${statusStyle.ring} ${statusStyle.border}`}>
               {STATUS_OPTIONS.map(({ value, label, icon }) => <option key={value} value={value}>{icon} {label}</option>)}
             </select>
             <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">▾</div>
@@ -916,10 +1093,10 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
 
       {machineName && serialNumber.trim() && floorName && status && (
         <div className={`border rounded-xl p-4 ${statusStyle.badge}`}>
-          <p className="text-[10px] uppercase tracking-widest opacity-60 mb-2">{currentUnit ? "Update preview" : "New entry preview"}</p>
+          <p className="text-[10px] uppercase tracking-widest opacity-50 mb-2">{currentUnit ? "Update preview" : "New entry"}</p>
           <div className="flex flex-wrap gap-4 items-center">
-            {[["Machine",machineName,"max-w-[160px] truncate"],["Serial",serialNumber.trim().toUpperCase(),"font-mono"],["Floor",floorName,""],["Status",status,""]].map(([l,v,cls]) => (
-              <div key={l}><span className="text-[10px] opacity-60">{l}</span><p className={`text-sm font-bold ${cls}`}>{v}</p></div>
+            {[["Machine",machineName,"max-w-[160px] truncate text-xs"],["Serial",serialNumber.trim().toUpperCase(),"font-mono text-sm"],["Floor",floorName,"text-xs"],["Status",status,"text-xs"]].map(([l,v,cls]) => (
+              <div key={l}><span className="text-[9px] opacity-50 block mb-0.5 uppercase tracking-widest">{l}</span><p className={`font-bold ${cls}`}>{v}</p></div>
             ))}
           </div>
         </div>
@@ -927,17 +1104,18 @@ function MachineEditTab({ factory, onSaveSuccess, showToast }) {
 
       <div className="flex gap-3">
         <button type="submit" disabled={saving}
-          className="flex-1 bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-[#0f1117] font-bold py-3 rounded-xl text-sm tracking-widest uppercase transition-all shadow-lg shadow-cyan-500/20">
+          className="flex-1 bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-800 disabled:text-slate-600 text-[#0a0d14] font-bold py-3 rounded-xl text-sm uppercase tracking-wider transition-all border border-cyan-400/20 disabled:border-slate-700">
           {saving ? "Saving..." : currentUnit ? "Update" : "Add"}
         </button>
         {currentUnit && (
           <button type="button" onClick={handleDelete} disabled={deleting}
-            className="px-5 bg-transparent border border-red-800 hover:border-red-500 text-red-400 hover:text-red-300 hover:bg-red-950/30 font-semibold py-3 rounded-xl text-sm transition-all disabled:opacity-40">
-            {deleting ? "..." : "Delete"}
+            className="px-5 bg-transparent border border-red-900 hover:border-red-600 text-red-500 hover:text-red-300 hover:bg-red-950/30 font-semibold py-3 rounded-xl text-sm transition-all disabled:opacity-40">
+            {deleting ? "…" : "Delete"}
           </button>
         )}
-        <button type="button" onClick={() => { setMachineName(""); setSerialNumber(""); setFloorName(""); setStatus("Running"); setExistingUnits([]); setCurrentUnit(null); setUnitSearch(""); setStatusFilter("ALL"); }}
-          className="px-5 bg-transparent border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 font-semibold py-3 rounded-xl text-sm tracking-widest uppercase transition-all">
+        <button type="button"
+          onClick={() => { setMachineName(""); setSerialNumber(""); setFloorName(""); setStatus("Running"); setExistingUnits([]); setCurrentUnit(null); setUnitSearch(""); setStatusFilter("ALL"); }}
+          className="px-5 bg-transparent border border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200 font-semibold py-3 rounded-xl text-sm uppercase tracking-wider transition-all">
           Reset
         </button>
       </div>
@@ -952,36 +1130,51 @@ export default function MachineInventoryForm({ onSaveSuccess, factory = "" }) {
   const showToast = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3500); };
 
   return (
-    <div className="bg-[#0f1117] font-mono pb-6">
+    <div className="bg-[#0a0d14] font-mono pb-6 min-h-full">
       <Toast toast={toast} />
-      <div className="px-7 pt-8 pb-0">
+
+      {/* Header */}
+      <div className="px-6 pt-7 pb-0">
         <div className="flex items-center gap-3 mb-1">
-          <div className="h-8 w-1 bg-cyan-400 rounded-full" />
-          <span className="text-xs tracking-[0.3em] text-cyan-400 uppercase">IE Department</span>
+          <div className="h-7 w-0.5 bg-cyan-400 rounded-full" />
+          <span className="text-[10px] tracking-[0.3em] text-cyan-400 uppercase">IE Department</span>
         </div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">Machine Inventory</h1>
-        <p className="text-slate-500 text-sm mt-1">Track the serial number and status of each machine unit.</p>
+        <h1 className="text-xl font-bold text-white tracking-tight">Machine Inventory</h1>
+        <p className="text-slate-600 text-xs mt-1">Track serial numbers and status of each machine unit.</p>
       </div>
-      <div className="flex mx-7 mt-5 border border-slate-800 rounded-xl overflow-hidden">
-        <button onClick={() => setTab("search")}
-          className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-widest transition-all ${tab === "search" ? "bg-cyan-900 text-cyan-300 border-b-2 border-cyan-400" : "bg-[#161b27] text-slate-500 hover:text-slate-300"}`}>
-          🔍 Find Serial
-        </button>
-        <button onClick={() => setTab("machine")}
-          className={`flex-1 py-2.5 text-xs font-bold uppercase tracking-widest transition-all ${tab === "machine" ? "bg-cyan-900 text-cyan-300 border-b-2 border-cyan-400" : "bg-[#161b27] text-slate-500 hover:text-slate-300"}`}>
-          ＋ Machine Based
-        </button>
+
+      {/* Tab switcher */}
+      <div className="flex mx-6 mt-5 bg-[#0c1018] border border-slate-800/60 rounded-xl overflow-hidden p-1 gap-1">
+        {[
+          { key: "search",  icon: "🔍", label: "Find Serial"    },
+          { key: "machine", icon: "＋", label: "Machine Based"  },
+        ].map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all
+              ${tab === t.key
+                ? "bg-cyan-600 text-white shadow-lg shadow-cyan-900/40"
+                : "text-slate-500 hover:text-slate-300 hover:bg-slate-800/40"}`}
+          >
+            <span>{t.icon}</span>
+            <span>{t.label}</span>
+          </button>
+        ))}
       </div>
-      <div className="mx-7 mt-4 bg-[#161b27] border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-        <div className="h-1 w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-violet-500" />
+
+      {/* Tab content */}
+      <div className="mx-6 mt-4 bg-[#0d1117] border border-slate-800/60 rounded-2xl overflow-hidden shadow-2xl">
+        <div className="h-px w-full bg-gradient-to-r from-cyan-500/60 via-blue-500/60 to-violet-500/60" />
         {tab === "search"
           ? <SerialSearchTab factory={factory} onSaveSuccess={onSaveSuccess} showToast={showToast} />
           : <MachineEditTab  factory={factory} onSaveSuccess={onSaveSuccess} showToast={showToast} />}
       </div>
-      <p className="text-center text-slate-600 text-xs mt-4">
+
+      <p className="text-center text-slate-700 text-[10px] mt-4 font-mono">
         {tab === "search"
-          ? "Find any machine by its serial number and edit it directly."
-          : "Select a machine type and enter a serial number to load existing units automatically."}
+          ? "Type any part of a serial number to search instantly."
+          : "Select machine type · enter serial · save or update."}
       </p>
     </div>
   );
