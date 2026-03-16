@@ -1,19 +1,9 @@
 // app/ProductionComponents/LineDailyWorkingBoard.jsx
-//
-// FIX 1: Users with roles Management / Data tracker / Developer / Others
-//         are NOT restricted to their own assigned_building.
-//         They can freely pick any factory, building, and line to view.
-//
-// FIX 2: Privileged users see ALL hourly records for a header (no
-//         productionUserId filter), because the records were posted by the
-//         line supervisor, not the viewer.
-//
 "use client";
 
 import { useEffect, useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 
-// ─── Privileged roles — can view any building/factory ─────────────────────────
 const PRIVILEGED_ROLES = ["Management", "Data tracker", "Developer", "Others"];
 
 function isPrivileged(auth) {
@@ -21,7 +11,6 @@ function isPrivileged(auth) {
   return PRIVILEGED_ROLES.includes(role);
 }
 
-// --------- helpers ----------
 const lineOptions = [
   "Line-1", "Line-2", "Line-3", "Line-4", "Line-5",
   "Line-6", "Line-7", "Line-8", "Line-9", "Line-10",
@@ -30,10 +19,10 @@ const lineOptions = [
 
 const buildingOptions = [
   "A-2", "B-2", "A-3", "B-3", "A-4", "B-4",
-  "A-5", "B-5", "A-6", "B-6", 
+  "A-5", "B-5", "A-6", "B-6",
 ];
 
-const factoryOptions = ["K-1","K-2", "K-3", "Others"];
+const factoryOptions = ["K-1", "K-2", "K-3", "Others"];
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -66,7 +55,6 @@ export default function HourlyProductionBoard({
   const setSelectedLine = propSetLine ?? setInternalLine;
   const setSelectedDate = propSetDate ?? setInternalDate;
 
-  // ── Privileged override selectors ────────────────────────────────────────────
   const [overrideBuilding, setOverrideBuilding] = useState("");
   const [overrideFactory,  setOverrideFactory]  = useState("");
 
@@ -78,21 +66,12 @@ export default function HourlyProductionBoard({
 
   const assignedBuilding = auth?.assigned_building || auth?.user?.assigned_building || "";
   const assignedFactory  =
-    auth?.factory ||
-    auth?.assigned_factory ||
-    auth?.user?.factory ||
-    auth?.user?.assigned_factory ||
-    "";
+    auth?.factory || auth?.assigned_factory ||
+    auth?.user?.factory || auth?.user?.assigned_factory || "";
 
-  const effectiveBuilding = privileged
-    ? (overrideBuilding || assignedBuilding)
-    : assignedBuilding;
+  const effectiveBuilding = privileged ? (overrideBuilding || assignedBuilding) : assignedBuilding;
+  const effectiveFactory  = privileged ? (overrideFactory  || assignedFactory)  : assignedFactory;
 
-  const effectiveFactory = privileged
-    ? (overrideFactory || assignedFactory)
-    : assignedFactory;
-
-  // Seed override dropdowns from auth once loaded
   useEffect(() => {
     if (!authLoading && auth && privileged) {
       if (!overrideBuilding && assignedBuilding) setOverrideBuilding(assignedBuilding);
@@ -103,45 +82,28 @@ export default function HourlyProductionBoard({
 
   useEffect(() => {
     if (authLoading) return;
-    if (!effectiveBuilding || !selectedLine || !selectedDate) {
-      setHeaders([]);
-      return;
-    }
+    if (!effectiveBuilding || !selectedLine || !selectedDate) { setHeaders([]); return; }
 
     const controller = new AbortController();
-
     const fetchHeaders = async () => {
       try {
-        setLoadingHeaders(true);
-        setError("");
-
+        setLoadingHeaders(true); setError("");
         const params = new URLSearchParams({
           assigned_building: effectiveBuilding,
           line: selectedLine,
           date: selectedDate,
         });
         if (effectiveFactory) params.set("factory", effectiveFactory);
-
-        const res  = await fetch(`/api/target-setter-header?${params.toString()}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
-
+        const res  = await fetch(`/api/target-setter-header?${params.toString()}`, { cache: "no-store", signal: controller.signal });
         const json = await res.json();
-        if (!res.ok || !json.success)
-          throw new Error(json.message || "Failed to load target headers");
-
+        if (!res.ok || !json.success) throw new Error(json.message || "Failed to load target headers");
         setHeaders(json.data || []);
       } catch (err) {
         if (err.name === "AbortError") return;
-        console.error(err);
         setError(err.message || "Failed to load target headers");
         setHeaders([]);
-      } finally {
-        setLoadingHeaders(false);
-      }
+      } finally { setLoadingHeaders(false); }
     };
-
     fetchHeaders();
     return () => controller.abort();
   }, [authLoading, effectiveBuilding, selectedLine, selectedDate, effectiveFactory]);
@@ -157,70 +119,78 @@ export default function HourlyProductionBoard({
   if (!auth) {
     return (
       <div className="card bg-yellow-50 border border-yellow-300 shadow-sm">
-        <div className="card-body py-2 px-3 text-xs">
-          No user logged in. Please sign in to see hourly production.
-        </div>
+        <div className="card-body py-2 px-3 text-xs">No user logged in. Please sign in to see hourly production.</div>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      {/* Top filter panel */}
-      <div className="card bg-base-100 border border-base-200 shadow-sm">
-        <div className="card-body p-3 space-y-2 text-xs">
-          <div className="flex flex-wrap items-end gap-4">
 
-            {/* ── Factory ── */}
-            <div className="space-y-1">
-              <div className="text-[11px] font-semibold text-slate-1000 uppercase">Factory</div>
+      {/* ── Filter panel ─────────────────────────────────────────────────── */}
+      <div className="card bg-base-100 border border-base-200 shadow-sm">
+        <div className="card-body p-3">
+
+          {/* Single row — all four controls + badges, left-aligned, tight gap */}
+          <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+
+            {/* Factory */}
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider leading-none">Factory</span>
               {privileged ? (
                 <select
-                  className="select select-xs border border-amber-500 bg-slate-100 text-[11px] font-semibold text-slate-900 min-w-[100px]"
+                  className="select select-xs border border-amber-500 bg-slate-100 text-[11px] font-semibold text-slate-900"
+                  style={{ minWidth: 80, height: 28 }}
                   value={overrideFactory}
                   onChange={(e) => { setOverrideFactory(e.target.value); setHeaders([]); }}
                 >
                   <option value="">— Any —</option>
-                  {factoryOptions.map((f) => (
-                    <option key={f} value={f}>{f}</option>
-                  ))}
+                  {factoryOptions.map((f) => <option key={f} value={f}>{f}</option>)}
                 </select>
               ) : (
-                <div className="badge bg-slate-100 border border-amber-500 text-[11px] font-semibold text-slate-900 px-3 py-2">
-                  <span className="mr-1 text-slate-500">Assigned:</span>
+                <div className="flex items-center gap-1 bg-slate-100 border border-amber-500 rounded px-2 text-[11px] font-semibold text-slate-900" style={{ height: 28 }}>
+                  <span className="text-slate-400 text-[10px]">Assigned:</span>
                   <span>{effectiveFactory || "Not set"}</span>
                 </div>
               )}
             </div>
 
-            {/* ── Building ── */}
-            <div className="space-y-1">
-              <div className="text-[11px] font-semibold text-slate-1000 uppercase">Building</div>
+            {/* Divider */}
+            <div className="w-px bg-slate-200 self-stretch mt-4" />
+
+            {/* Building */}
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider leading-none">Building</span>
               {privileged ? (
                 <select
-                  className="select select-xs border border-amber-500 bg-slate-100 text-[11px] font-semibold text-slate-900 min-w-[100px]"
+                  className="select select-xs border border-amber-500 bg-slate-100 text-[11px] font-semibold text-slate-900"
+                  style={{ minWidth: 80, height: 28 }}
                   value={overrideBuilding}
                   onChange={(e) => { setOverrideBuilding(e.target.value); setHeaders([]); }}
                 >
                   <option value="">— Any —</option>
-                  {buildingOptions.map((b) => (
-                    <option key={b} value={b}>{b}</option>
-                  ))}
+                  {buildingOptions.map((b) => <option key={b} value={b}>{b}</option>)}
                 </select>
               ) : (
-                <div className="badge bg-slate-100 border border-amber-500 text-[11px] font-semibold text-slate-900 px-3 py-2">
-                  <span className="mr-1 text-slate-500">Assigned:</span>
+                <div className="flex items-center gap-1 bg-slate-100 border border-amber-500 rounded px-2 text-[11px] font-semibold text-slate-900" style={{ height: 28 }}>
+                  <span className="text-slate-400 text-[10px]">Assigned:</span>
                   <span>{effectiveBuilding || "Not assigned"}</span>
                 </div>
               )}
             </div>
 
-            {/* Line hover dropdown */}
-            <div className="space-y-1 relative group/line">
-              <label className="block text-[11px] font-semibold text-slate-700 uppercase cursor-default">Line</label>
-              <div className="flex items-center gap-1.5 cursor-pointer rounded border border-amber-500 bg-slate-400 px-3 py-1 min-w-[120px] text-[12px] font-semibold text-black select-none">
-                <span className="flex-1">{selectedLine || "Select line"}</span>
-                <svg className="w-3 h-3 text-slate-700 transition-transform duration-150 group-hover/line:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+            {/* Divider */}
+            <div className="w-px bg-slate-200 self-stretch mt-4" />
+
+            {/* Line — hover dropdown */}
+            <div className="flex flex-col gap-0.5 relative group/line">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider leading-none">Line</span>
+              <div
+                className="flex items-center gap-1.5 cursor-pointer rounded border border-amber-500 bg-slate-400 px-2 text-[11px] font-semibold text-black select-none"
+                style={{ height: 28, minWidth: 110 }}
+              >
+                <span className="flex-1 truncate">{selectedLine || "Select line"}</span>
+                <svg className="w-3 h-3 text-slate-700 shrink-0 transition-transform duration-150 group-hover/line:rotate-180" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
                 </svg>
               </div>
@@ -228,22 +198,28 @@ export default function HourlyProductionBoard({
                 <div className="px-3 py-1.5 text-[11px] text-slate-400 cursor-pointer hover:bg-slate-50" onMouseDown={() => setSelectedLine("")}>— clear —</div>
                 {lineOptions.map((line) => (
                   <div key={line} onMouseDown={() => setSelectedLine(line)}
-                    className={`px-3 py-1.5 text-[12px] font-medium cursor-pointer hover:bg-amber-50 hover:text-amber-900 ${selectedLine === line ? "bg-amber-100 text-amber-900 font-semibold" : "text-slate-800"}`}>
+                    className={`px-3 py-1.5 text-[11px] font-medium cursor-pointer hover:bg-amber-50 hover:text-amber-900 ${selectedLine === line ? "bg-amber-100 text-amber-900 font-semibold" : "text-slate-800"}`}>
                     {line}
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Date hover calendar */}
-            <div className="space-y-1 relative group/date">
-              <label className="block text-[11px] font-semibold text-slate-700 uppercase cursor-default">Date</label>
-              <div className="flex items-center gap-1.5 cursor-pointer rounded border border-amber-500 bg-amber-300 px-3 py-1 text-[12px] font-semibold text-black select-none">
-                <svg className="w-3 h-3 text-slate-700" viewBox="0 0 20 20" fill="currentColor">
+            {/* Divider */}
+            <div className="w-px bg-slate-200 self-stretch mt-4" />
+
+            {/* Date — hover calendar */}
+            <div className="flex flex-col gap-0.5 relative group/date">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider leading-none">Date</span>
+              <div
+                className="flex items-center gap-1.5 cursor-pointer rounded border border-amber-500 bg-amber-300 px-2 text-[11px] font-semibold text-black select-none"
+                style={{ height: 28, minWidth: 110 }}
+              >
+                <svg className="w-3 h-3 text-slate-700 shrink-0" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
                 </svg>
-                <span>{selectedDate || "Pick date"}</span>
-                <svg className="w-3 h-3 text-slate-700 transition-transform duration-150 group-hover/date:rotate-180" viewBox="0 0 20 20" fill="currentColor">
+                <span className="flex-1 truncate">{selectedDate || "Pick date"}</span>
+                <svg className="w-3 h-3 text-slate-700 shrink-0 transition-transform duration-150 group-hover/date:rotate-180" viewBox="0 0 20 20" fill="currentColor">
                   <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
                 </svg>
               </div>
@@ -256,74 +232,58 @@ export default function HourlyProductionBoard({
               </div>
             </div>
 
+            {/* Synced badge */}
             {propLine !== undefined && (
-              <div className="space-y-1">
-                <div className="text-[11px] font-semibold text-slate-500 uppercase opacity-0 select-none">_</div>
-                <div className="badge bg-emerald-100 border border-emerald-400 text-[10px] font-semibold text-emerald-800 px-2 py-2 gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
-                  Synced with Target Setter
-                </div>
+              <div className="flex items-center gap-1 bg-emerald-100 border border-emerald-400 rounded px-2 text-[10px] font-semibold text-emerald-800" style={{ height: 28 }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block shrink-0" />
+                Synced with Target Setter
               </div>
             )}
 
+            {/* Privileged badge */}
             {privileged && (
-              <div className="space-y-1">
-                <div className="text-[11px] font-semibold text-slate-500 uppercase opacity-0 select-none">_</div>
-                <div className="badge bg-violet-100 border border-violet-400 text-[10px] font-semibold text-violet-800 px-2 py-2 gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-violet-500 inline-block" />
-                  {auth?.user?.role || auth?.role} — All Access
-                </div>
+              <div className="flex items-center gap-1 bg-violet-100 border border-violet-400 rounded px-2 text-[10px] font-semibold text-violet-800" style={{ height: 28 }}>
+                <span className="w-1.5 h-1.5 rounded-full bg-violet-500 inline-block shrink-0" />
+                {auth?.user?.role || auth?.role} — All Access
               </div>
             )}
           </div>
 
+          {/* Status messages below the row */}
           {error && (
-            <div className="alert alert-error py-1 px-2 text-[11px]"><span>{error}</span></div>
+            <div className="mt-2 alert alert-error py-1 px-2 text-[11px]"><span>{error}</span></div>
           )}
-
           {selectedLine && !loadingHeaders && headers.length === 0 && (
-            <div className="text-[11px] text-slate-600">
+            <p className="mt-1.5 text-[11px] text-slate-500">
               No target headers for{" "}
               <span className="font-semibold">{effectiveFactory || "?"}</span> •{" "}
               <span className="font-semibold">{effectiveBuilding}</span> •{" "}
               <span className="font-semibold">{selectedLine}</span> •{" "}
               <span className="font-semibold">{selectedDate}</span>
-            </div>
+            </p>
           )}
-
           {loadingHeaders && (
-            <div className="text-[11px] text-slate-600 flex items-center gap-2">
+            <p className="mt-1.5 text-[11px] text-slate-500 flex items-center gap-1.5">
               <span className="loading loading-spinner loading-xs" />
-              <span>Loading target headers...</span>
-            </div>
+              Loading target headers...
+            </p>
           )}
         </div>
       </div>
 
       {headers.map((header) => (
-        <HourlyHeaderCard
-          key={header._id}
-          header={header}
-          auth={auth}
-          privileged={privileged}
-        />
+        <HourlyHeaderCard key={header._id} header={header} auth={auth} privileged={privileged} />
       ))}
 
       {headers.length === 0 && !loadingHeaders && !error && selectedLine && (
-        <div className="text-[11px] text-slate-500">
-          When you create target headers for this factory, line & date, they will
-          show here with hourly input cards.
-        </div>
+        <p className="text-[11px] text-slate-500">
+          When you create target headers for this factory, line &amp; date, they will show here with hourly input cards.
+        </p>
       )}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// HourlyHeaderCard
-// KEY FIX: privileged prop controls whether we filter by productionUserId.
-//   - Normal users: filter by their own ID → only see their own records
-//   - Privileged:   NO userId filter      → see ALL records for the header
 // ─────────────────────────────────────────────────────────────────────────────
 function HourlyHeaderCard({ header, auth, privileged }) {
   const [selectedHour, setSelectedHour]       = useState(1);
@@ -346,24 +306,15 @@ function HourlyHeaderCard({ header, auth, privileged }) {
 
   const [cycleStartDate, setCycleStartDate] = useState(null);
 
-  const productionUserId =
-    auth?.user?.id || auth?.user?._id || auth?.id || auth?._id || "";
-
+  const productionUserId = auth?.user?.id || auth?.user?._id || auth?.id || auth?._id || "";
   const factory =
-    header?.factory ||
-    auth?.factory ||
-    auth?.assigned_factory ||
-    auth?.user?.factory ||
-    auth?.user?.assigned_factory ||
-    "";
+    header?.factory || auth?.factory || auth?.assigned_factory ||
+    auth?.user?.factory || auth?.user?.assigned_factory || "";
 
   const buildWipParams = () => new URLSearchParams({
-    factory,
-    assigned_building: header.assigned_building,
-    line:  header.line,
-    buyer: header.buyer,
-    style: header.style,
-    date:  header.date,
+    factory, assigned_building: header.assigned_building,
+    line: header.line, buyer: header.buyer,
+    style: header.style, date: header.date,
   });
 
   const refreshWip = async () => {
@@ -372,38 +323,18 @@ function HourlyHeaderCard({ header, auth, privileged }) {
     try {
       const res  = await fetch(`/api/style-wip?${buildWipParams().toString()}`, { cache: "no-store" });
       const json = await res.json();
-      if (res.ok && json.success) {
-        setWipInfo(json.data);
-        setCycleStartDate(json.data?.cycleStartDate || null);
-      } else {
-        setWipInfo(null);
-        setCycleStartDate(null);
-      }
-    } catch (err) {
-      console.error("refreshWip error:", err);
-      setWipInfo(null);
-      setCycleStartDate(null);
-    } finally {
-      setWipLoading(false);
-    }
+      if (res.ok && json.success) { setWipInfo(json.data); setCycleStartDate(json.data?.cycleStartDate || null); }
+      else { setWipInfo(null); setCycleStartDate(null); }
+    } catch (err) { console.error("refreshWip error:", err); setWipInfo(null); setCycleStartDate(null); }
+    finally { setWipLoading(false); }
   };
 
   useEffect(() => {
-    setSelectedHour(1);
-    setAchievedInput("");
-    setHourlyRecords([]);
-    setEditingRecordId(null);
-    setError("");
-    setMessage("");
-    setTotalInput("");
-    setWipInfo(null);
-    setCycleStartDate(null);
-    setDayInput("");
+    setSelectedHour(1); setAchievedInput(""); setHourlyRecords([]);
+    setEditingRecordId(null); setError(""); setMessage("");
+    setTotalInput(""); setWipInfo(null); setCycleStartDate(null); setDayInput("");
   }, [header?._id]);
 
-  // ── FIX: fetch hourly records ─────────────────────────────────────────────
-  // Privileged → no productionUserId filter → sees all records for this header
-  // Normal     → filter by own productionUserId (original behaviour)
   const buildRecordParams = () => {
     const p = new URLSearchParams({ headerId: header._id });
     if (!privileged && productionUserId) p.set("productionUserId", productionUserId);
@@ -412,30 +343,19 @@ function HourlyHeaderCard({ header, auth, privileged }) {
 
   useEffect(() => {
     if (!header?._id) return;
-    if (!privileged && !productionUserId) return; // normal user needs their ID
-
+    if (!privileged && !productionUserId) return;
     const controller = new AbortController();
     const fetchRecords = async () => {
       try {
-        setLoadingRecords(true);
-        setError("");
-        setMessage("");
-        const res  = await fetch(`/api/hourly-productions?${buildRecordParams().toString()}`, {
-          cache: "no-store",
-          signal: controller.signal,
-        });
+        setLoadingRecords(true); setError(""); setMessage("");
+        const res  = await fetch(`/api/hourly-productions?${buildRecordParams().toString()}`, { cache: "no-store", signal: controller.signal });
         const json = await res.json();
-        if (!res.ok || !json.success)
-          throw new Error(json.message || "Failed to load hourly records");
+        if (!res.ok || !json.success) throw new Error(json.message || "Failed to load hourly records");
         setHourlyRecords(json.data || []);
       } catch (err) {
         if (err.name === "AbortError") return;
-        console.error(err);
-        setError(err.message || "Failed to load hourly records");
-        setHourlyRecords([]);
-      } finally {
-        setLoadingRecords(false);
-      }
+        setError(err.message || "Failed to load hourly records"); setHourlyRecords([]);
+      } finally { setLoadingRecords(false); }
     };
     fetchRecords();
     return () => controller.abort();
@@ -445,68 +365,34 @@ function HourlyHeaderCard({ header, auth, privileged }) {
   useEffect(() => {
     if (!header) return;
     const controller = new AbortController();
-
     const fetchCapacityAndWip = async () => {
       try {
-        setTotalInputLoading(true);
-        setWipLoading(true);
-
+        setTotalInputLoading(true); setWipLoading(true);
         let detectedCycleStartDate = null;
         try {
           if (factory) {
-            const resWip = await fetch(
-              `/api/style-wip?${buildWipParams().toString()}`,
-              { cache: "no-store", signal: controller.signal }
-            );
+            const resWip = await fetch(`/api/style-wip?${buildWipParams().toString()}`, { cache: "no-store", signal: controller.signal });
             if (resWip.ok) {
               const jsonWip = await resWip.json();
-              if (jsonWip.success) {
-                setWipInfo(jsonWip.data);
-                detectedCycleStartDate = jsonWip.data?.cycleStartDate || null;
-                setCycleStartDate(detectedCycleStartDate);
-              }
+              if (jsonWip.success) { setWipInfo(jsonWip.data); detectedCycleStartDate = jsonWip.data?.cycleStartDate || null; setCycleStartDate(detectedCycleStartDate); }
             }
           }
-        } catch (err) {
-          if (err.name !== "AbortError") console.error(err);
-        }
-
+        } catch (err) { if (err.name !== "AbortError") console.error(err); }
         try {
-          const baseParams = new URLSearchParams({
-            assigned_building: header.assigned_building,
-            line:  header.line,
-            buyer: header.buyer,
-            style: header.style,
-          });
+          const baseParams = new URLSearchParams({ assigned_building: header.assigned_building, line: header.line, buyer: header.buyer, style: header.style });
           if (factory) baseParams.set("factory", factory);
           if (detectedCycleStartDate) baseParams.set("cycleStartDate", detectedCycleStartDate);
-
-          const resCap = await fetch(
-            `/api/style-capacities?${baseParams.toString()}`,
-            { cache: "no-store", signal: controller.signal }
-          );
+          const resCap = await fetch(`/api/style-capacities?${baseParams.toString()}`, { cache: "no-store", signal: controller.signal });
           if (resCap.ok) {
             const jsonCap = await resCap.json();
-            if (jsonCap.success) {
-              const doc = jsonCap.data?.[0] || null;
-              setTotalInput(doc?.capacity != null ? String(doc.capacity) : "");
-            }
+            if (jsonCap.success) { const doc = jsonCap.data?.[0] || null; setTotalInput(doc?.capacity != null ? String(doc.capacity) : ""); }
           }
-        } catch (err) {
-          if (err.name !== "AbortError") console.error(err);
-        }
-      } finally {
-        setTotalInputLoading(false);
-        setWipLoading(false);
-      }
+        } catch (err) { if (err.name !== "AbortError") console.error(err); }
+      } finally { setTotalInputLoading(false); setWipLoading(false); }
     };
-
     fetchCapacityAndWip();
     return () => controller.abort();
-  }, [
-    header?.assigned_building, header?.line, header?.buyer,
-    header?.style, header?.date, header, factory,
-  ]);
+  }, [header?.assigned_building, header?.line, header?.buyer, header?.style, header?.date, header, factory]);
 
   if (!header) return null;
 
@@ -521,17 +407,13 @@ function HourlyHeaderCard({ header, auth, privileged }) {
 
   const hoursOptions = Array.from({ length: Math.max(1, totalWorkingHours) }, (_, i) => i + 1);
 
-  const targetFromCapacity =
-    manpowerPresent > 0 && smv > 0 ? (manpowerPresent * 60 * planEffDecimal) / smv : 0;
+  const targetFromCapacity = manpowerPresent > 0 && smv > 0 ? (manpowerPresent * 60 * planEffDecimal) / smv : 0;
   const targetFromFullDay  = totalWorkingHours > 0 ? targetFullDay / totalWorkingHours : 0;
   const baseTargetPerHour  = Math.round(targetFromCapacity || targetFromFullDay || 0);
 
   const achievedThisHour = Math.round(Number(achievedInput) || 0);
   const selectedHourInt  = Number(selectedHour) || 1;
-  const hourlyEfficiency =
-    manpowerPresent > 0 && smv > 0
-      ? (achievedThisHour * smv * 100) / (manpowerPresent * 60)
-      : 0;
+  const hourlyEfficiency = manpowerPresent > 0 && smv > 0 ? (achievedThisHour * smv * 100) / (manpowerPresent * 60) : 0;
 
   const recordsSorted = hourlyRecords
     .map((rec) => ({ ...rec, _hourNum: Number(rec.hour) }))
@@ -540,22 +422,15 @@ function HourlyHeaderCard({ header, auth, privileged }) {
 
   let runningAchieved = 0;
   const recordsDecorated = recordsSorted.map((rec) => {
-    const hourN                         = rec._hourNum;
-    const baselineToDatePrev            = baseTargetPerHour * (hourN - 1);
+    const hourN = rec._hourNum;
+    const baselineToDatePrev = baseTargetPerHour * (hourN - 1);
     const cumulativeShortfallVsBasePrev = Math.max(0, baselineToDatePrev - runningAchieved);
-    const dynTarget                     = baseTargetPerHour + cumulativeShortfallVsBasePrev;
-    const achievedRounded               = Math.round(toNum(rec.achievedQty, 0));
-    const perHourVarDynamic             = achievedRounded - dynTarget;
+    const dynTarget = baseTargetPerHour + cumulativeShortfallVsBasePrev;
+    const achievedRounded = Math.round(toNum(rec.achievedQty, 0));
+    const perHourVarDynamic = achievedRounded - dynTarget;
     runningAchieved += achievedRounded;
-    const netVarVsBaseToDate            = runningAchieved - baseTargetPerHour * hourN;
-    return {
-      ...rec,
-      _hourNum: hourN,
-      _dynTargetRounded: Math.round(dynTarget),
-      _achievedRounded: achievedRounded,
-      _perHourVarDynamic: perHourVarDynamic,
-      _netVarVsBaseToDate: netVarVsBaseToDate,
-    };
+    const netVarVsBaseToDate = runningAchieved - baseTargetPerHour * hourN;
+    return { ...rec, _hourNum: hourN, _dynTargetRounded: Math.round(dynTarget), _achievedRounded: achievedRounded, _perHourVarDynamic: perHourVarDynamic, _netVarVsBaseToDate: netVarVsBaseToDate };
   });
 
   const hasRecords              = recordsDecorated.length > 0;
@@ -567,90 +442,55 @@ function HourlyHeaderCard({ header, auth, privileged }) {
 
   const previousDecorated  = recordsDecorated.filter((r) => r._hourNum < selectedHourInt);
   const achievedToDatePrev = previousDecorated.reduce((s, r) => s + (r._achievedRounded ?? 0), 0);
-  const baselineToDatePrevForSelected            = baseTargetPerHour * (selectedHourInt - 1);
+  const baselineToDatePrevForSelected = baseTargetPerHour * (selectedHourInt - 1);
   const cumulativeShortfallVsBasePrevForSelected = Math.max(0, baselineToDatePrevForSelected - achievedToDatePrev);
-  const dynamicTargetThisHour                    = Math.round(baseTargetPerHour + cumulativeShortfallVsBasePrevForSelected);
+  const dynamicTargetThisHour = Math.round(baseTargetPerHour + cumulativeShortfallVsBasePrevForSelected);
 
-  const achievedToDatePosted       = recordsDecorated.filter((r) => r._hourNum <= selectedHourInt).reduce((s, r) => s + (r._achievedRounded ?? 0), 0);
+  const achievedToDatePosted = recordsDecorated.filter((r) => r._hourNum <= selectedHourInt).reduce((s, r) => s + (r._achievedRounded ?? 0), 0);
   const netVarVsBaseToDateSelected = achievedToDatePosted - baseTargetPerHour * selectedHourInt;
 
-  const previousRecord              = previousDecorated.length > 0 ? previousDecorated[previousDecorated.length - 1] : null;
-  const previousVariance            = previousRecord ? previousRecord._perHourVarDynamic : 0;
+  const previousRecord    = previousDecorated.length > 0 ? previousDecorated[previousDecorated.length - 1] : null;
+  const previousVariance  = previousRecord ? previousRecord._perHourVarDynamic : 0;
   const cumulativeVarianceDynamicPrev = previousDecorated.reduce((s, r) => s + (r._perHourVarDynamic ?? 0), 0);
 
   const totalAchievedBeforeSelected = previousDecorated.reduce((s, r) => s + (r._achievedRounded ?? 0), 0);
-  const achieveEfficiency =
-    manpowerPresent > 0 && smv > 0 && selectedHourInt > 0
-      ? ((totalAchievedBeforeSelected + achievedThisHour) * smv * 100) / (manpowerPresent * 60 * selectedHourInt)
-      : 0;
+  const achieveEfficiency = manpowerPresent > 0 && smv > 0 && selectedHourInt > 0
+    ? ((totalAchievedBeforeSelected + achievedThisHour) * smv * 100) / (manpowerPresent * 60 * selectedHourInt)
+    : 0;
 
-  // ─── Handlers ────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     try {
       setError(""); setMessage("");
       if (!header?._id) throw new Error("Missing headerId");
       const hourNum  = Number(selectedHour);
       const existing = hourlyRecords.find((rec) => Number(rec.hour) === hourNum);
-
       if (editingRecordId) {
-        if (!latestRecord || editingRecordId !== latestRecord._id) {
-          setError("Only the last saved hour can be edited."); return;
-        }
-        if (hourNum !== latestRecord._hourNum) {
-          setError(`Editing is locked to hour ${latestRecord._hourNum}.`); return;
-        }
-      } else if (existing) {
-        setError(`Hour ${hourNum} is already saved. Use "Edit last hour" to change the latest entry.`);
-        return;
-      }
-
-      if (!Number.isFinite(achievedThisHour) || achievedThisHour < 0)
-        throw new Error("Please enter a valid achieved qty.");
+        if (!latestRecord || editingRecordId !== latestRecord._id) { setError("Only the last saved hour can be edited."); return; }
+        if (hourNum !== latestRecord._hourNum) { setError(`Editing is locked to hour ${latestRecord._hourNum}.`); return; }
+      } else if (existing) { setError(`Hour ${hourNum} is already saved. Use "Edit last hour" to change the latest entry.`); return; }
+      if (!Number.isFinite(achievedThisHour) || achievedThisHour < 0) throw new Error("Please enter a valid achieved qty.");
       if (!productionUserId) throw new Error("Missing user id.");
-
       setSaving(true);
       const payload = {
-        headerId: header._id,
-        hour: hourNum,
-        achievedQty: achievedThisHour,
-        productionUser: {
-          id: productionUserId,
-          Production_user_name: auth?.user?.user_name || auth?.user_name || "Unknown",
-          phone: auth?.phone || "",
-          bio:   auth?.role  || "",
-        },
+        headerId: header._id, hour: hourNum, achievedQty: achievedThisHour,
+        productionUser: { id: productionUserId, Production_user_name: auth?.user?.user_name || auth?.user_name || "Unknown", phone: auth?.phone || "", bio: auth?.role || "" },
       };
-
-      const res  = await fetch("/api/hourly-productions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res  = await fetch("/api/hourly-productions", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const json = await res.json();
-      if (!res.ok || !json.success)
-        throw new Error(json?.errors?.join(", ") || json?.message || "Failed to save");
-
-      // Re-fetch with the same params as initial load
+      if (!res.ok || !json.success) throw new Error(json?.errors?.join(", ") || json?.message || "Failed to save");
       const resList  = await fetch(`/api/hourly-productions?${buildRecordParams().toString()}`);
       const jsonList = await resList.json();
       if (resList.ok && jsonList.success) setHourlyRecords(jsonList.data || []);
-
       await refreshWip();
-      setAchievedInput("");
-      setEditingRecordId(null);
+      setAchievedInput(""); setEditingRecordId(null);
       setMessage(editingRecordId ? "Last hour updated successfully." : "Hourly record saved successfully.");
-    } catch (err) {
-      console.error(err);
-      setError(err.message || "Failed to save hourly record");
-    } finally {
-      setSaving(false);
-    }
+    } catch (err) { console.error(err); setError(err.message || "Failed to save hourly record"); }
+    finally { setSaving(false); }
   };
 
   const startEditLastHour = () => {
     if (!latestRecord) { setError("No hourly record found to edit."); return; }
-    setError(""); setMessage("");
-    setEditingRecordId(latestRecord._id);
+    setError(""); setMessage(""); setEditingRecordId(latestRecord._id);
     setSelectedHour(latestRecord._hourNum);
     setAchievedInput(latestRecord._achievedRounded != null ? String(latestRecord._achievedRounded) : "");
     setMessage(`Editing last saved hour (${latestRecord._hourNum}).`);
@@ -659,78 +499,55 @@ function HourlyHeaderCard({ header, auth, privileged }) {
   const handleTotalInputSave = async () => {
     try {
       setError(""); setMessage("");
-      if (!auth)    throw new Error("User not authenticated");
+      if (!auth) throw new Error("User not authenticated");
       if (!factory) throw new Error("Factory not set.");
-      if (!cycleStartDate) throw new Error("Cycle start date not detected yet. Please wait for WIP data to load.");
+      if (!cycleStartDate) throw new Error("Cycle start date not detected yet.");
       const capNum = Number(totalInput);
       if (!Number.isFinite(capNum) || capNum < 0) throw new Error("Total input must be a non-negative number.");
       const userId = auth?.user?.id || auth?.user?._id || auth?.id || auth?._id;
       if (!userId) throw new Error("Missing user id.");
-
       setTotalInputSaving(true);
       const payload = {
-        factory, assigned_building: header.assigned_building,
-        line: header.line, buyer: header.buyer, style: header.style,
+        factory, assigned_building: header.assigned_building, line: header.line, buyer: header.buyer, style: header.style,
         cycleStartDate, date: header.date, capacity: capNum,
         user: { id: userId, user_name: auth?.user?.user_name || auth?.user_name || "Unknown", role: auth?.user?.role || auth?.role || "" },
       };
-
-      const res  = await fetch("/api/style-capacities", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-      });
+      const res  = await fetch("/api/style-capacities", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json?.errors?.join(", ") || json?.message || "Failed to save capacity.");
-
       setTotalInput(json.data?.capacity != null ? String(json.data.capacity) : "");
-      await refreshWip();
-      setMessage("Total input saved/updated successfully.");
-    } catch (err) {
-      console.error(err);
-      setError(err.message || "Failed to save total input.");
-    } finally {
-      setTotalInputSaving(false);
-    }
+      await refreshWip(); setMessage("Total input saved/updated successfully.");
+    } catch (err) { console.error(err); setError(err.message || "Failed to save total input."); }
+    finally { setTotalInputSaving(false); }
   };
 
   const handleDayInputSave = async () => {
     try {
       setError(""); setMessage("");
-      if (!auth)    throw new Error("User not authenticated");
+      if (!auth) throw new Error("User not authenticated");
       if (!factory) throw new Error("Factory not set.");
-      if (!cycleStartDate) throw new Error("Cycle start date not detected yet. Please wait for WIP data to load.");
+      if (!cycleStartDate) throw new Error("Cycle start date not detected yet.");
       const addQty = Number(dayInput);
       if (!Number.isFinite(addQty) || addQty <= 0) throw new Error("Day input must be a positive number.");
       const userId = auth?.user?.id || auth?.user?._id || auth?.id || auth?._id;
       if (!userId) throw new Error("Missing user id.");
-
       const newTotal = toNum(totalInput, 0) + addQty;
       setDayInputSaving(true);
       const payload = {
-        factory, assigned_building: header.assigned_building,
-        line: header.line, buyer: header.buyer, style: header.style,
+        factory, assigned_building: header.assigned_building, line: header.line, buyer: header.buyer, style: header.style,
         cycleStartDate, date: header.date, capacity: newTotal,
         user: { id: userId, user_name: auth?.user?.user_name || auth?.user_name || "Unknown", role: auth?.user?.role || auth?.role || "" },
       };
-
-      const res  = await fetch("/api/style-capacities", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
-      });
+      const res  = await fetch("/api/style-capacities", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const json = await res.json();
       if (!res.ok || !json.success) throw new Error(json?.errors?.join(", ") || json?.message || "Failed to update total input.");
-
       setTotalInput(json.data?.capacity != null ? String(json.data.capacity) : String(newTotal));
-      setDayInput("");
-      await refreshWip();
+      setDayInput(""); await refreshWip();
       setMessage(`Day input of ${addQty} added. Total input is now ${json.data?.capacity ?? newTotal}.`);
-    } catch (err) {
-      console.error(err);
-      setError(err.message || "Failed to add day input.");
-    } finally {
-      setDayInputSaving(false);
-    }
+    } catch (err) { console.error(err); setError(err.message || "Failed to add day input."); }
+    finally { setDayInputSaving(false); }
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="card bg-base-100 border border-base-200 shadow-sm">
       <div className="card-body w-full p-3 space-y-3">
@@ -757,9 +574,7 @@ function HourlyHeaderCard({ header, auth, privileged }) {
               <span className="font-semibold"> • Item:</span> {header.Item}
             </div>
             {cycleStartDate && (
-              <div className="text-[11px] text-slate-500">
-                <span className="font-semibold">Cycle start:</span> {cycleStartDate}
-              </div>
+              <div className="text-[11px] text-slate-500"><span className="font-semibold">Cycle start:</span> {cycleStartDate}</div>
             )}
           </div>
           <div className="text-[13px] text-right text-slate-1000 space-y-0.5">
@@ -871,9 +686,7 @@ function HourlyHeaderCard({ header, auth, privileged }) {
             </button>
             {!cycleStartDate && !wipLoading && <span className="text-[10px] text-amber-600">Waiting for cycle detection…</span>}
           </div>
-
           <div className="border-t border-dashed border-slate-300" />
-
           <div className="flex flex-wrap items-center gap-3">
             <span className="font-bold text-slate-900 whitespace-nowrap">Day Input :</span>
             <input type="number" min="1" step="1" className="input input-xxs input-bordered w-20 h-8 text-[12px] font-bold border-green-500" value={dayInput} onChange={(e) => setDayInput(e.target.value)} placeholder="e.g. 100" />
@@ -882,9 +695,7 @@ function HourlyHeaderCard({ header, auth, privileged }) {
             </button>
             <span className="text-[10px] text-slate-500">This qty will be added to Total Input and saved.</span>
           </div>
-
           <div className="border-t border-dashed border-slate-300" />
-
           <div className="flex flex-wrap items-center gap-5">
             <div>
               <span className="text-slate-900 text-[12px] mr-1">Uptodate Production :</span>
@@ -899,16 +710,13 @@ function HourlyHeaderCard({ header, auth, privileged }) {
           </div>
         </div>
 
-        {/* ── Posted hourly records table ── */}
         <div className="mt-1">
           <div className="flex items-center justify-between text-xs mb-1.5">
             <h3 className="font-semibold text-[12px]">
               Posted hourly records
-              {/* Show scope label so user knows what they're seeing */}
               {privileged
                 ? <span className="ml-2 text-[10px] text-violet-600 font-normal normal-case">(all users)</span>
-                : <span className="ml-2 text-[10px] text-slate-400 font-normal normal-case">(your records)</span>
-              }
+                : <span className="ml-2 text-[10px] text-slate-400 font-normal normal-case">(your records)</span>}
             </h3>
             {loadingRecords && (
               <span className="flex items-center gap-1 text-[10px] text-slate-500">
@@ -916,7 +724,6 @@ function HourlyHeaderCard({ header, auth, privileged }) {
               </span>
             )}
           </div>
-
           {recordsDecorated.length === 0 ? (
             <p className="text-[11px] text-slate-500">No hourly records saved yet for this header.</p>
           ) : (
@@ -932,7 +739,6 @@ function HourlyHeaderCard({ header, auth, privileged }) {
                     <th className="px-2">Hourly Eff %</th>
                     <th className="px-2">AVG Eff %</th>
                     <th className="px-2">Updated At</th>
-                    {/* Extra column for privileged — shows who posted each row */}
                     {privileged && <th className="px-2">Posted By</th>}
                   </tr>
                 </thead>
@@ -942,20 +748,12 @@ function HourlyHeaderCard({ header, auth, privileged }) {
                       <td className="px-2 py-1">{rec._hourNum}</td>
                       <td className="px-2 py-1">{formatNumber(rec._dynTargetRounded, 0)}</td>
                       <td className="px-2 py-1">{rec._achievedRounded}</td>
-                      <td className={`px-2 py-1 ${(rec._perHourVarDynamic ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
-                        {formatNumber(rec._perHourVarDynamic ?? 0, 0)}
-                      </td>
-                      <td className={`px-2 py-1 ${(rec._netVarVsBaseToDate ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
-                        {formatNumber(rec._netVarVsBaseToDate ?? 0, 0)}
-                      </td>
+                      <td className={`px-2 py-1 ${(rec._perHourVarDynamic ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>{formatNumber(rec._perHourVarDynamic ?? 0, 0)}</td>
+                      <td className={`px-2 py-1 ${(rec._netVarVsBaseToDate ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>{formatNumber(rec._netVarVsBaseToDate ?? 0, 0)}</td>
                       <td className="px-2 py-1">{formatNumber(rec.hourlyEfficiency)}</td>
                       <td className="px-2 py-1">{formatNumber(rec.totalEfficiency)} %</td>
                       <td className="px-2 py-1">{rec.updatedAt ? new Date(rec.updatedAt).toLocaleTimeString() : "-"}</td>
-                      {privileged && (
-                        <td className="px-2 py-1 text-slate-500 text-[10px]">
-                          {rec.productionUser?.Production_user_name || rec.productionUser?.id || "-"}
-                        </td>
-                      )}
+                      {privileged && <td className="px-2 py-1 text-slate-500 text-[10px]">{rec.productionUser?.Production_user_name || rec.productionUser?.id || "-"}</td>}
                     </tr>
                   ))}
                 </tbody>
@@ -966,9 +764,7 @@ function HourlyHeaderCard({ header, auth, privileged }) {
                       <td className="px-2 py-1">-</td>
                       <td className="px-1 py-1">{formatNumber(totalAchievedAll, 0)}</td>
                       <td className="px-2 py-1">-</td>
-                      <td className={`px-2 py-1 ${totalNetVarVsBaseToDate >= 0 ? "text-green-700" : "text-red-700"}`}>
-                        {formatNumber(totalNetVarVsBaseToDate, 0)}
-                      </td>
+                      <td className={`px-2 py-1 ${totalNetVarVsBaseToDate >= 0 ? "text-green-700" : "text-red-700"}`}>{formatNumber(totalNetVarVsBaseToDate, 0)}</td>
                       <td className="px-2 py-1">-</td>
                       <td className="px-2 py-1">{formatNumber(totalAvgEffPercent)} %</td>
                       <td className="px-2 py-1">-</td>
