@@ -162,12 +162,12 @@ export default function HomePage() {
               Live dashboards • Fast entry • Clean tracking
             </div>
 
-            <h1 className="text-[26px] font-bold leading-tight">
-              Your daily{" "}
+            <h1 className="text-[36px] font-bold leading-tight">
+              YOUR DAILY{" "}
               <span className="bg-gradient-to-r from-emerald-300 to-sky-300 bg-clip-text text-transparent">
                 PRODUCTION & QUALITY
               </span>{" "}
-              control center.
+              CONTROL CENTER.
             </h1>
 
             <p className="text-[12px] leading-relaxed text-white/60 max-w-sm">
@@ -207,16 +207,16 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* RIGHT — Factory SVG, completely borderless, just floating */}
-          <div className="relative flex items-center justify-center h-[220px]">
-            <Image
-              src="/undraw_factory_4d61.svg"
-              alt="Factory"
-              fill
-              className="object-contain"
-              priority
-            />
-          </div>
+          {/* RIGHT — Floating image, auto-fits any size */}
+<div className="relative flex items-center justify-center h-[320px] w-full">
+  <Image
+    src="/ChatGPT_Image_Mar_17__2026__09_57_46_AM-removebg-preview.png"
+    alt="Factory"
+    fill
+    className="object-contain"
+    priority
+  />
+</div>
         </div>
 
         {/* ── Divider ── */}

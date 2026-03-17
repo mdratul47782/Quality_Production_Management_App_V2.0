@@ -233,7 +233,7 @@ export default function StyleMediaRegisterPage() {
   }
 
   return (
-    <section className="max-w-5xl mx-auto bg-white border border-gray-100 shadow-2xl rounded-2xl mt-3 overflow-hidden">
+    <section className="max-w-5xl mx-auto bg-white border border-gray-100 shadow-2xl rounded-2xl mt-0 overflow-hidden">
       <Toaster position="top-right" toastOptions={{ duration: 2500 }} />
 
       {/* ── Header ── */}
