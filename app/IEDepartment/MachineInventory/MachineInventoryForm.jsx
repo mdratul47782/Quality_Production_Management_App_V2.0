@@ -1137,7 +1137,7 @@ export default function MachineInventoryForm({ onSaveSuccess, factory = "" }) {
       <div className="px-6 pt-7 pb-0">
         <div className="flex items-center gap-3 mb-1">
           <div className="h-7 w-0.5 bg-cyan-400 rounded-full" />
-          <span className="text-[10px] tracking-[0.3em] text-cyan-400 uppercase">IE Department</span>
+          <span className="text-[10px] tracking-[0.3em] text-cyan-400 uppercase">Maintenance Department</span>
         </div>
         <h1 className="text-xl font-bold text-white tracking-tight">Machine Inventory</h1>
         <p className="text-slate-600 text-xs mt-1">Track serial numbers and status of each machine unit.</p>

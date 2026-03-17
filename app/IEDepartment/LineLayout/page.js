@@ -3,6 +3,12 @@
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/app/hooks/useAuth";
+import {
+  Trash2, X, Check, Printer, Ruler, ClipboardList, Ban,
+  Pencil, Menu, Plus, ArrowLeft, ChevronUp, ChevronDown,
+  GripVertical, AlertTriangle, Factory, Search, RefreshCw,
+  Paperclip, Wrench, ChevronRight, LayoutDashboard, Settings,
+} from "lucide-react";
 
 const FACTORY_OPTIONS = ["K-2", "K-3", "K-4", "Others"];
 const FLOOR_OPTIONS   = ["A-2","B-2","A-3","B-3","A-4","B-4","A-5","B-5","A-6","B-6","C-4","K-3","SMD/CAD","Others"];
@@ -50,17 +56,6 @@ function calcTargets(smv, eff, operator, helper, seamSealing, hours) {
 }
 
 // ─── openPrintWindow ──────────────────────────────────────────────────────────
-// All sections are width:100% so every table's right edge aligns with the image.
-// Sized to fit 50 processes (25 rows × 2 col) + 10-15 machine rows on A4 portrait.
-//
-// A4 usable height @ 4mm top+bottom padding ≈ 282mm
-//   Title rows      : ~8mm
-//   Info + image    : ~12mm
-//   Process header  : ~5mm
-//   25 process rows : ~25 × 4mm = ~100mm   (height:13px ≈ ~3.4mm)
-//   Machine summary : ~15 × 3.5mm = ~52mm
-//   Signature       : ~10mm
-//   Total           : ~187mm  ✓ fits with margin
 function openPrintWindow(layout) {
   if (!layout) return;
 
@@ -96,7 +91,6 @@ function openPrintWindow(layout) {
 
   const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-  // Info table — 5 rows, minimal height
   const infoRows = [
     ["Unit",  `${layout.floor} - LINE NO-${layout.lineNo}`, "Plan Efficiency:",                              `${layout.planEfficiency}%`],
     ["Buyer", layout.buyer,                                  "Op + Hel + Seam Sealing",                      `${layout.operator}+${layout.helper}+${layout.seamSealing}`],
@@ -111,7 +105,6 @@ function openPrintWindow(layout) {
       <td style="border:1px solid #000;font-weight:bold;text-align:center;padding:1px 3px;font-size:6.5px">${esc(v2)}</td>
     </tr>`).join("");
 
-  // cellHtml — 3 tds per process entry (SL | Process Name | Machine)
   function cellHtml(entries) {
     if (!entries || entries.length === 0) {
       return `
@@ -164,13 +157,7 @@ function openPrintWindow(layout) {
   <title>Line Layout - ${esc(layout.floor)} Line ${esc(layout.lineNo)}</title>
   <style>
     * { box-sizing: border-box; margin:0; padding:0; }
-    body {
-      padding: 4mm 5mm;
-      font-family: Arial, sans-serif;
-      font-size: 6.5px;
-      background: #fff;
-      width: 210mm;
-    }
+    body { padding: 4mm 5mm; font-family: Arial, sans-serif; font-size: 6.5px; background: #fff; width: 210mm; }
     table { border-collapse: collapse; width: 100%; }
     @page { size: A4 portrait; margin: 0; }
     tr { page-break-inside: avoid; }
@@ -178,57 +165,28 @@ function openPrintWindow(layout) {
   </style>
 </head>
 <body>
-
-  <!-- ① Company title -->
   <table style="margin-bottom:1px">
-    <tr>
-      <td style="border:1px solid #000;font-weight:bold;font-size:9px;text-align:center;padding:2px 4px">
-        HKD OUTDOOR INNOVATIONS LTD
-      </td>
-    </tr>
+    <tr><td style="border:1px solid #000;font-weight:bold;font-size:9px;text-align:center;padding:2px 4px">HKD OUTDOOR INNOVATIONS LTD</td></tr>
   </table>
-
-  <!-- ② Section label -->
   <table style="margin-bottom:2px">
-    <tr>
-      <td style="border:1px solid #000;font-weight:bold;font-size:8px;text-align:center;padding:2px 4px;background:#FFFF00">
-        MACHINE LAYOUT
-      </td>
-    </tr>
+    <tr><td style="border:1px solid #000;font-weight:bold;font-size:8px;text-align:center;padding:2px 4px;background:#FFFF00">MACHINE LAYOUT</td></tr>
   </table>
-
-  <!-- ③ Info + Image  — width:100%, image is right 18% -->
   <table style="margin-bottom:3px;table-layout:fixed">
-    <colgroup>
-      <col style="width:82%">
-      <col style="width:18%">
-    </colgroup>
+    <colgroup><col style="width:82%"><col style="width:18%"></colgroup>
     <tr>
       <td style="padding:0;vertical-align:top">
         <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-          <colgroup>
-            <col style="width:12%"><col style="width:26%"><col style="width:8%">
-            <col style="width:32%"><col style="width:22%">
-          </colgroup>
+          <colgroup><col style="width:12%"><col style="width:26%"><col style="width:8%"><col style="width:32%"><col style="width:22%"></colgroup>
           <tbody>${infoRows}</tbody>
         </table>
       </td>
-      <td style="border:1px solid #000;text-align:center;vertical-align:middle;padding:2px">
-        ${sketchImg}
-      </td>
+      <td style="border:1px solid #000;text-align:center;vertical-align:middle;padding:2px">${sketchImg}</td>
     </tr>
   </table>
-
-  <!-- ④ Process table — width:100%, right edge = right edge of image above -->
   <table style="margin-bottom:3px;table-layout:fixed">
     <colgroup>
-      <col style="width:4%">
-      <col style="width:30.5%">
-      <col style="width:13.5%">
-      <col style="width:3%">
-      <col style="width:4%">
-      <col style="width:30.5%">
-      <col style="width:14.5%">
+      <col style="width:4%"><col style="width:30.5%"><col style="width:13.5%"><col style="width:3%">
+      <col style="width:4%"><col style="width:30.5%"><col style="width:14.5%">
     </colgroup>
     <thead>
       <tr>
@@ -243,17 +201,9 @@ function openPrintWindow(layout) {
     </thead>
     <tbody>${processRows}</tbody>
   </table>
-
-  <!-- ⑤ Machine summary (left) + Signature (right) — width:100% fills to image edge -->
   <table style="table-layout:fixed">
-    <colgroup>
-      <col style="width:38%">
-      <col style="width:4%">
-      <col style="width:58%">
-    </colgroup>
+    <colgroup><col style="width:38%"><col style="width:4%"><col style="width:58%"></colgroup>
     <tr style="vertical-align:top">
-
-      <!-- Machine summary -->
       <td style="padding:0;vertical-align:top">
         <table style="width:100%;border-collapse:collapse">
           <tr>
@@ -267,11 +217,7 @@ function openPrintWindow(layout) {
           </tr>
         </table>
       </td>
-
-      <!-- Spacer -->
       <td style="padding:0"></td>
-
-      <!-- Signature -->
       <td style="padding:0;vertical-align:bottom">
         <table style="width:100%;border-collapse:collapse">
           <tr style="height:28px">
@@ -282,26 +228,19 @@ function openPrintWindow(layout) {
           </tr>
         </table>
       </td>
-
     </tr>
   </table>
-
 </body>
 </html>`;
 
   const old = document.getElementById("ll-print-iframe");
   if (old) old.remove();
-
   const iframe = document.createElement("iframe");
   iframe.id = "ll-print-iframe";
   iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;";
   document.body.appendChild(iframe);
-
   const iDoc = iframe.contentDocument || iframe.contentWindow.document;
-  iDoc.open();
-  iDoc.write(html);
-  iDoc.close();
-
+  iDoc.open(); iDoc.write(html); iDoc.close();
   setTimeout(() => {
     try { iframe.contentWindow.focus(); iframe.contentWindow.print(); }
     catch (e) { console.error("iframe print failed:", e); }
@@ -325,7 +264,7 @@ function SearchableSelect({ value, onChange, options, placeholder = "— Select 
       <button type="button" onClick={() => { setOpen((o) => !o); setQuery(""); }}
         className="w-full bg-white border border-slate-300 text-slate-800 rounded-lg px-3 py-3 text-base text-left flex items-center justify-between focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-100 transition-colors">
         <span className={value ? "text-slate-800" : "text-slate-400"}>{value || placeholder}</span>
-        <span className="text-slate-400 text-sm ml-2">{open ? "▴" : "▾"}</span>
+        {open ? <ChevronUp size={14} className="text-slate-400 ml-2 shrink-0" /> : <ChevronDown size={14} className="text-slate-400 ml-2 shrink-0" />}
       </button>
       {open && (
         <div className="absolute z-50 w-full mt-1 bg-white border border-slate-300 rounded-xl shadow-2xl overflow-hidden">
@@ -372,14 +311,18 @@ function AddProcessNameModal({ onAdd, onClose }) {
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-bold text-slate-800 text-lg">Add New Process Name</h3>
-            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
+            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+              <X size={20} />
+            </button>
           </div>
           <form onSubmit={handleSubmit} className="space-y-4">
             <input autoFocus type="text" value={name} onChange={(e) => { setName(e.target.value); setError(""); }}
               placeholder="Enter process name..." className="w-full bg-white border border-slate-300 text-slate-800 rounded-lg px-4 py-3 text-base focus:outline-none focus:border-blue-500 placeholder:text-slate-400" />
             {error && <p className="text-red-600 text-sm">{error}</p>}
             <div className="flex gap-3">
-              <button type="submit" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all">{saving ? "Adding..." : "+ Add"}</button>
+              <button type="submit" disabled={saving} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all flex items-center justify-center gap-2">
+                <Plus size={16} />{saving ? "Adding..." : "Add"}
+              </button>
               <button type="button" onClick={onClose} className="px-5 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">Cancel</button>
             </div>
           </form>
@@ -393,9 +336,12 @@ function AddProcessNameModal({ onAdd, onClose }) {
 function Toast({ toast }) {
   if (!toast) return null;
   return (
-    <div className={`fixed top-4 right-4 z-[999] px-6 py-3 rounded-xl text-base font-semibold shadow-2xl border
+    <div className={`fixed top-4 right-4 z-[999] px-6 py-3 rounded-xl text-base font-semibold shadow-2xl border flex items-center gap-2
       ${toast.type === "success" ? "bg-emerald-50 border-emerald-400 text-emerald-800" : "bg-red-50 border-red-400 text-red-800"}`}>
-      {toast.type === "success" ? "✓ " : "✕ "}{toast.msg}
+      {toast.type === "success"
+        ? <Check size={16} className="text-emerald-600 shrink-0" />
+        : <X size={16} className="text-red-600 shrink-0" />}
+      {toast.msg}
     </div>
   );
 }
@@ -409,7 +355,7 @@ function WasteFloorPicker({ processEntry, layoutFloor, onConfirm, onCancel }) {
         <div className="h-1 bg-gradient-to-r from-red-500 to-orange-400 rounded-t-2xl" />
         <div className="p-6">
           <div className="flex items-center gap-3 mb-4">
-            <span className="text-2xl">🚫</span>
+            <Ban size={24} className="text-red-500 shrink-0" />
             <div>
               <h3 className="font-bold text-slate-800 text-lg">Waste Machine</h3>
               <p className="text-slate-500 text-base">#{processEntry.serialNo} — {processEntry.processName?.substring(0, 40)}</p>
@@ -440,7 +386,9 @@ function WasteFloorPicker({ processEntry, layoutFloor, onConfirm, onCancel }) {
             This process will be removed and machines will become idle at <strong className="text-red-600">{wasteFloor}</strong> floor.
           </p>
           <div className="flex gap-3">
-            <button onClick={() => onConfirm(wasteFloor)} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl text-base transition-all">🚫 Confirm Waste</button>
+            <button onClick={() => onConfirm(wasteFloor)} className="flex-1 bg-red-500 hover:bg-red-600 text-white font-bold py-3 rounded-xl text-base transition-all flex items-center justify-center gap-2">
+              <Ban size={16} /> Confirm Waste
+            </button>
             <button onClick={onCancel} className="px-6 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">Cancel</button>
           </div>
         </div>
@@ -511,7 +459,7 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
             <p className="text-slate-400 text-base animate-pulse py-10 text-center">Loading...</p>
           ) : idleUnits.length === 0 ? (
             <div className="py-10 text-center">
-              <p className="text-4xl mb-3">🔍</p>
+              <Search size={36} className="text-slate-300 mx-auto mb-3" />
               <p className="text-slate-500 text-base font-medium">No idle machines found.</p>
               <p className="text-slate-400 text-sm mt-1">Add idle units in Machine Inventory.</p>
             </div>
@@ -531,7 +479,7 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
                         <button key={`${unit.machineId}-${unit.serialNumber}`} type="button" onClick={() => toggleUnit(unit)}
                           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-mono font-bold border-2 transition-all
                             ${sel ? "bg-blue-600 border-blue-500 text-white shadow-md shadow-blue-200" : "bg-white border-slate-300 text-slate-700 hover:border-blue-400 hover:bg-blue-50"}`}>
-                          {sel && <span className="text-xs">✓</span>}
+                          {sel && <Check size={12} />}
                           <span>{unit.serialNumber}</span>
                           {machineType === "HELPER" && (
                             <span className={`text-[10px] font-sans font-normal ${sel ? "text-blue-200" : "text-slate-400"}`}>
@@ -560,8 +508,8 @@ function MachineFloorPicker({ machineType, factory = "", onConfirm, onCancel }) 
           )}
           <div className="flex gap-3 mt-5">
             <button disabled={selected.length === 0} onClick={() => onConfirm(selected)}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all">
-              {selected.length > 0 ? `Add ${selected.length} machine(s) →` : "Select a serial number"}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all flex items-center justify-center gap-2">
+              {selected.length > 0 ? <><Check size={16} /> Add {selected.length} machine(s)</> : "Select a serial number"}
             </button>
             <button onClick={onCancel} className="px-6 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">Cancel</button>
           </div>
@@ -648,7 +596,7 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
             transition: "border-color 0.1s, background 0.1s",
           }}>
           <span style={{ fontSize: 11, fontWeight: 700, color: isOver ? "#1d4ed8" : "#94a3b8", letterSpacing: "0.05em" }}>
-            {isOver ? `▼ Drop at slot ${serialNo}` : `# ${serialNo} — Empty`}
+            {isOver ? `Drop at slot ${serialNo}` : `# ${serialNo} — Empty`}
           </span>
         </div>
       );
@@ -682,7 +630,7 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
           opacity: dragId.current === entries[0]._id ? 0.4 : 1,
           transition: "border-color 0.1s, background 0.1s",
         }}>
-        <span className="absolute left-1 top-1/2 -translate-y-1/2 text-slate-300 text-xs select-none opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">⣿</span>
+        <GripVertical size={12} className="absolute left-1 top-1/2 -translate-y-1/2 text-slate-300 select-none opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
         <div className="px-4 py-2">
           <div className="flex items-start gap-2 mb-1.5 flex-wrap">
@@ -709,8 +657,8 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
                 <button
                   onClick={(e) => { e.stopPropagation(); setWasteTarget(entry); }}
                   title="Waste"
-                  className="absolute top-0 right-0 w-6 h-6 rounded-full hidden group-hover:flex items-center justify-center text-xs font-black bg-red-100 hover:bg-red-500 text-red-600 hover:text-white transition-all z-10 shadow">
-                  ✕
+                  className="absolute top-0 right-0 w-6 h-6 rounded-full hidden group-hover:flex items-center justify-center bg-red-100 hover:bg-red-500 text-red-600 hover:text-white transition-all z-10 shadow">
+                  <X size={12} />
                 </button>
 
                 {entries.length > 1 && (
@@ -735,7 +683,7 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
                       return isDup ? (
                         <span key={sn} className="text-[11px] font-mono font-black px-2 py-0.5 rounded flex items-center gap-1 animate-pulse"
                           style={{ background: "#fef3c7", color: "#b45309", border: "2px solid #f59e0b", boxShadow: "0 0 6px rgba(245,158,11,0.5)" }}>
-                          ⚠ {sn}
+                          <AlertTriangle size={10} /> {sn}
                         </span>
                       ) : (
                         <span key={sn} className="text-[11px] font-mono font-black px-2 py-0.5 rounded"
@@ -746,7 +694,7 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
                 )}
                 {serials.some((sn) => duplicateSerials.has(sn)) && (
                   <div className="mt-1.5 flex items-center gap-1.5 bg-amber-50 border border-amber-300 rounded px-2 py-1">
-                    <span className="text-amber-600 text-[10px]">⚠</span>
+                    <AlertTriangle size={10} className="text-amber-600 shrink-0" />
                     <span className="text-[10px] font-bold text-amber-700">
                       Duplicate serial — also used in another process
                     </span>
@@ -816,14 +764,14 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
           })}
           {duplicateSerials.size > 0 && (
             <span className="ml-auto flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-full border-2 border-amber-400 bg-amber-50 text-amber-700 animate-pulse">
-              ⚠ {duplicateSerials.size} duplicate serial{duplicateSerials.size > 1 ? "s" : ""}: {[...duplicateSerials].join(", ")}
+              <AlertTriangle size={12} /> {duplicateSerials.size} duplicate serial{duplicateSerials.size > 1 ? "s" : ""}: {[...duplicateSerials].join(", ")}
             </span>
           )}
         </div>
       )}
       {rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-slate-400 gap-2">
-          <span className="text-4xl">📋</span>
+          <ClipboardList size={40} className="text-slate-300" />
           <p className="text-base">Add processes to see the layout here</p>
         </div>
       ) : (
@@ -924,14 +872,9 @@ export default function LineLayoutPage() {
       for (const m of proc.machines || []) {
         if (m.serialNumber) {
           result.push({
-            key:          m.serialNumber,
-            serialNumber: m.serialNumber,
-            machineName:  m.machineName,
-            machineId:    m.machineId,
-            fromFloor:    m.fromFloor,
-            processName:  proc.processName,
-            serialNo:     proc.serialNo,
-            machineType:  proc.machineType,
+            key: m.serialNumber, serialNumber: m.serialNumber, machineName: m.machineName,
+            machineId: m.machineId, fromFloor: m.fromFloor,
+            processName: proc.processName, serialNo: proc.serialNo, machineType: proc.machineType,
           });
         }
       }
@@ -1169,23 +1112,18 @@ export default function LineLayoutPage() {
     setDeleting(true);
     try {
       const machineReturns = allMachines.map((m) => ({
-        machineId:    m.machineId,
-        serialNumber: m.serialNumber,
-        returnFloor:  machineFloors[m.serialNumber],
+        machineId: m.machineId, serialNumber: m.serialNumber, returnFloor: machineFloors[m.serialNumber],
       }));
       const res = await fetch(`/api/line-layouts/${deleteTarget._id}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
+        method: "DELETE", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ machineReturns }),
       });
       const json = await res.json();
       if (json.success) {
         showToast("success", "Layout deleted.");
-        setDeleteTarget(null);
-        setMachineFloors({});
+        setDeleteTarget(null); setMachineFloors({});
         if (currentLayout?._id === deleteTarget._id) setCurrentLayout(null);
-        setView("list");
-        loadLayouts();
+        setView("list"); loadLayouts();
       } else showToast("error", json.message);
     } finally { setDeleting(false); }
   }
@@ -1218,7 +1156,9 @@ export default function LineLayoutPage() {
                 <div className="h-1 bg-gradient-to-r from-red-500 to-rose-600 rounded-t-2xl shrink-0" />
                 <div className="px-6 pt-5 pb-4 border-b border-slate-200 shrink-0">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 text-xl shrink-0">🗑</div>
+                    <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                      <Trash2 size={20} className="text-red-600" />
+                    </div>
                     <div>
                       <h3 className="font-black text-slate-900 text-lg">Delete Layout</h3>
                       <p className="text-slate-500 text-sm">{deleteTarget.floor} · Line {deleteTarget.lineNo} — {deleteTarget.buyer}</p>
@@ -1233,7 +1173,9 @@ export default function LineLayoutPage() {
                   ) : (
                     <div className="space-y-3">
                       <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                        <p className="text-sm font-bold text-amber-800 mb-0.5">⚠ {allMachines.length} machine(s) assigned — select return floor for each</p>
+                        <p className="text-sm font-bold text-amber-800 mb-0.5 flex items-center gap-1.5">
+                          <AlertTriangle size={14} /> {allMachines.length} machine(s) assigned — select return floor for each
+                        </p>
                         <p className="text-xs text-amber-700">Each machine will be returned to Idle on its chosen floor.</p>
                       </div>
                       <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
@@ -1259,7 +1201,7 @@ export default function LineLayoutPage() {
                                   {m.machineType} · was on <strong>{m.fromFloor || "—"}</strong>
                                 </p>
                               </div>
-                              <span className="text-slate-400 text-sm shrink-0">→</span>
+                              <ChevronRight size={14} className="text-slate-400 shrink-0" />
                               <select value={sel}
                                 onChange={(e) => setMachineFloors((prev) => ({ ...prev, [m.serialNumber]: e.target.value }))}
                                 className={`w-32 shrink-0 border rounded-lg px-2 py-1.5 text-sm focus:outline-none transition-colors
@@ -1286,8 +1228,8 @@ export default function LineLayoutPage() {
                 </div>
                 <div className="px-6 pb-5 pt-3 border-t border-slate-200 shrink-0 flex gap-3">
                   <button onClick={handleDeleteLayout} disabled={deleting || (hasMachines && !allFilled)}
-                    className="flex-1 bg-red-500 hover:bg-red-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all">
-                    {deleting ? "Deleting..." : "🗑 Confirm Delete"}
+                    className="flex-1 bg-red-500 hover:bg-red-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all flex items-center justify-center gap-2">
+                    <Trash2 size={16} />{deleting ? "Deleting..." : "Confirm Delete"}
                   </button>
                   <button onClick={() => { setDeleteTarget(null); setMachineFloors({}); }}
                     className="px-6 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">
@@ -1317,8 +1259,10 @@ export default function LineLayoutPage() {
               <div className="h-1 bg-gradient-to-r from-amber-400 to-orange-400 rounded-t-2xl" />
               <form onSubmit={handleSaveProcessEdit} className="p-6 space-y-4">
                 <div className="flex items-center justify-between mb-1">
-                  <h3 className="font-bold text-slate-800 text-lg">✏️ Edit Process</h3>
-                  <button type="button" onClick={() => setEditingProcess(null)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
+                  <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2"><Pencil size={18} className="text-amber-500" /> Edit Process</h3>
+                  <button type="button" onClick={() => setEditingProcess(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                    <X size={20} />
+                  </button>
                 </div>
                 <LField label="Serial No">
                   <select value={editingProcess.serialNo} onChange={(e) => setEditingProcess((p) => ({ ...p, serialNo: +e.target.value }))}
@@ -1339,14 +1283,16 @@ export default function LineLayoutPage() {
                   return <div className="rounded-lg px-4 py-2 border-l-4 text-sm font-bold" style={{ background: c.bg, borderLeftColor: c.accent, color: c.text }}>{editingProcess.machineType}</div>;
                 })()}
                 {editingProcess.machineType !== editingProcess.originalMachineType ? (
-                  <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">🔄 Machine type changed — old machines will return to inventory and new serials must be selected.</p>
+                  <p className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 flex items-center gap-1.5">
+                    <RefreshCw size={12} /> Machine type changed — old machines will return to inventory and new serials must be selected.
+                  </p>
                 ) : (
                   <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">Machine assignment unchanged. Only serial and process name will update.</p>
                 )}
                 <div className="flex gap-3 pt-1">
                   <button type="submit" disabled={procEditSaving || !editingProcess.processName || !editingProcess.machineType}
-                    className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all">
-                    {procEditSaving ? "Saving..." : editingProcess.machineType !== editingProcess.originalMachineType && editingProcess.machineType !== "HELPER" ? "✓ Next → Select Serial" : "✓ Update"}
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold py-3 rounded-xl text-base transition-all flex items-center justify-center gap-2">
+                    <Check size={16} />{procEditSaving ? "Saving..." : editingProcess.machineType !== editingProcess.originalMachineType && editingProcess.machineType !== "HELPER" ? "Next → Select Serial" : "Update"}
                   </button>
                   <button type="button" onClick={() => setEditingProcess(null)} className="px-5 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base transition-all">Cancel</button>
                 </div>
@@ -1375,35 +1321,37 @@ export default function LineLayoutPage() {
                 </select>
               </div>
             ) : (
-              <span className="text-base bg-blue-50 border border-blue-200 text-blue-700 px-3 py-2 rounded-lg font-bold">🏭 {userFactory || "—"}</span>
+              <span className="text-base bg-blue-50 border border-blue-200 text-blue-700 px-3 py-2 rounded-lg font-bold flex items-center gap-1.5">
+                <Factory size={15} /> {userFactory || "—"}
+              </span>
             )}
             {view !== "list" && (
-              <button onClick={() => setView("list")} className="px-4 py-2 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base font-semibold transition-all bg-white">
-                ← All Layouts
+              <button onClick={() => setView("list")} className="px-4 py-2 border border-slate-300 hover:border-slate-400 text-slate-600 rounded-xl text-base font-semibold transition-all bg-white flex items-center gap-1.5">
+                <ArrowLeft size={16} /> All Layouts
               </button>
             )}
             {view === "list" && (
               <button onClick={() => { setView("form"); setForm({ floor:"", lineNo:"", buyer:"", style:"", item:"", smv:"", planEfficiency:"", operator:"", helper:"", seamSealing:"", workingHours:8 }); setSketchPreview(""); }}
-                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-base transition-all shadow-sm">
-                + New Layout
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-base transition-all shadow-sm flex items-center gap-2">
+                <Plus size={16} /> New Layout
               </button>
             )}
             {view === "builder" && currentLayout && (
               <button onClick={() => openPrintWindow(currentLayout)}
                 className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-base transition-all shadow-sm flex items-center gap-2">
-                🖨 Print Layout
+                <Printer size={16} /> Print Layout
               </button>
             )}
             {view === "builder" && currentLayout && (
               <button onClick={() => openDeleteModal(currentLayout)}
-                className="px-4 py-2.5 bg-red-50 border border-red-200 hover:bg-red-500 hover:text-white hover:border-red-500 text-red-600 rounded-xl text-base font-bold transition-all">
-                🗑 Delete Layout
+                className="px-4 py-2.5 bg-red-50 border border-red-200 hover:bg-red-500 hover:text-white hover:border-red-500 text-red-600 rounded-xl text-base font-bold transition-all flex items-center gap-1.5">
+                <Trash2 size={15} /> Delete Layout
               </button>
             )}
             {view === "builder" && (
               <button onClick={() => { setView("list"); loadLayouts(); }}
-                className="px-5 py-2.5 bg-slate-600 hover:bg-slate-700 text-white font-bold rounded-xl text-base transition-all">
-                ✓ Done
+                className="px-5 py-2.5 bg-slate-600 hover:bg-slate-700 text-white font-bold rounded-xl text-base transition-all flex items-center gap-2">
+                <Check size={16} /> Done
               </button>
             )}
           </div>
@@ -1428,7 +1376,7 @@ export default function LineLayoutPage() {
               <p className="text-slate-400 text-base animate-pulse text-center py-20">Loading...</p>
             ) : layouts.length === 0 ? (
               <div className="text-center py-20 text-slate-400">
-                <p className="text-5xl mb-3">📐</p>
+                <Ruler size={48} className="text-slate-300 mx-auto mb-3" />
                 <p className="text-base">No layouts found. Create a new one.</p>
               </div>
             ) : (
@@ -1441,7 +1389,11 @@ export default function LineLayoutPage() {
                       <div className="p-5">
                         <div className="flex items-start justify-between mb-3">
                           <div>
-                            {l.factory && <span className="text-xs bg-blue-50 border border-blue-200 text-blue-600 px-2 py-0.5 rounded-full font-bold mr-1">🏭 {l.factory}</span>}
+                            {l.factory && (
+                              <span className="text-xs bg-blue-50 border border-blue-200 text-blue-600 px-2 py-0.5 rounded-full font-bold mr-1 inline-flex items-center gap-1">
+                                <Factory size={10} /> {l.factory}
+                              </span>
+                            )}
                             <div className="text-base text-blue-600 font-bold mt-1">{l.floor} · Line {l.lineNo}</div>
                             <h3 className="font-black text-slate-900 text-lg mt-0.5">{l.buyer}</h3>
                             <p className="text-slate-500 text-base">{l.style} — {l.item}</p>
@@ -1465,13 +1417,13 @@ export default function LineLayoutPage() {
                         </div>
                         <div className="flex gap-2">
                           <button onClick={() => { setCurrentLayout(l); prefillEditForm(l); setBuilderTab("process"); setView("builder"); }}
-                            className="flex-1 py-3 bg-blue-50 border border-blue-200 hover:bg-blue-600 hover:text-white hover:border-blue-600 text-blue-700 rounded-xl text-base font-bold transition-all">
-                            Open Builder →
+                            className="flex-1 py-3 bg-blue-50 border border-blue-200 hover:bg-blue-600 hover:text-white hover:border-blue-600 text-blue-700 rounded-xl text-base font-bold transition-all flex items-center justify-center gap-2">
+                            Open Builder <ChevronRight size={16} />
                           </button>
                           <button onClick={() => openDeleteModal(l)}
                             className="px-4 py-3 bg-red-50 border border-red-200 hover:bg-red-500 hover:text-white hover:border-red-500 text-red-600 rounded-xl text-base font-bold transition-all"
                             title="Delete layout">
-                            🗑
+                            <Trash2 size={16} />
                           </button>
                         </div>
                       </div>
@@ -1541,15 +1493,18 @@ export default function LineLayoutPage() {
                       className="border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-xl p-5 cursor-pointer transition-all text-center bg-slate-50">
                       {sketchPreview
                         ? <img src={sketchPreview} alt="sketch" className="max-h-36 mx-auto rounded-lg object-contain" />
-                        : <p className="text-slate-400 text-base">Click to select an image</p>}
+                        : <div className="flex flex-col items-center gap-2 text-slate-400">
+                            <Paperclip size={24} className="text-slate-300" />
+                            <p className="text-base">Click to select an image</p>
+                          </div>}
                       <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleSketchChange} />
                     </div>
                   </LField>
                 </div>
                 <div className="px-8 pb-8">
                   <button type="submit" disabled={saving || uploading}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-4 rounded-xl text-base tracking-widest uppercase transition-all shadow-sm">
-                    {uploading ? "Uploading image..." : saving ? "Creating..." : "Create Layout →"}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-4 rounded-xl text-base tracking-widest uppercase transition-all shadow-sm flex items-center justify-center gap-2">
+                    {uploading ? "Uploading image..." : saving ? "Creating..." : <><Plus size={18} /> Create Layout</>}
                   </button>
                 </div>
               </div>
@@ -1562,10 +1517,15 @@ export default function LineLayoutPage() {
           <div className="flex flex-1 overflow-hidden min-h-0">
             <div className="w-[440px] shrink-0 border-r-2 border-slate-200 flex flex-col bg-white shadow-sm overflow-hidden">
               <div className="flex border-b-2 border-slate-200 shrink-0">
-                {[{ key:"edit", label:"✏️ Edit" }, { key:"process", label:"＋ Process" }, { key:"list", label:"☰ List" }].map((t) => (
+                {[
+                  { key:"edit",    label:"Edit",    Icon: Settings   },
+                  { key:"process", label:"Process", Icon: Plus       },
+                  { key:"list",    label:"List",    Icon: Menu       },
+                ].map((t) => (
                   <button key={t.key} onClick={() => setBuilderTab(t.key)}
-                    className={`flex-1 py-3 text-sm font-bold transition-all border-b-2 ${builderTab === t.key ? "border-blue-600 text-blue-700 bg-blue-50" : "border-transparent text-slate-500 hover:text-slate-700 bg-white"}`}>
-                    {t.label}
+                    className={`flex-1 py-3 text-sm font-bold transition-all border-b-2 flex items-center justify-center gap-1.5
+                      ${builderTab === t.key ? "border-blue-600 text-blue-700 bg-blue-50" : "border-transparent text-slate-500 hover:text-slate-700 bg-white"}`}>
+                    <t.Icon size={14} />{t.label}
                   </button>
                 ))}
               </div>
@@ -1616,12 +1576,16 @@ export default function LineLayoutPage() {
                             <img src={editSketchPreview || editForm.sketchUrl} alt="Current sketch"
                               className="w-full max-h-32 object-contain rounded-lg border border-slate-200 bg-slate-50" />
                             <button type="button" onClick={() => { setEditSketchFile(null); setEditSketchPreview(""); setEditForm((p) => ({ ...p, sketchUrl:"" })); }}
-                              className="absolute top-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full text-xs font-black flex items-center justify-center shadow">✕</button>
+                              className="absolute top-1 right-1 w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow">
+                              <X size={12} />
+                            </button>
                           </div>
                         )}
                         <div onClick={() => editFileRef.current?.click()}
-                          className="border-2 border-dashed border-slate-300 hover:border-amber-400 rounded-xl p-3 cursor-pointer transition-all text-center bg-slate-50">
-                          <p className="text-slate-400 text-sm">{editSketchPreview || editForm.sketchUrl ? "🔄 Replace with new image" : "📎 Click to select image"}</p>
+                          className="border-2 border-dashed border-slate-300 hover:border-amber-400 rounded-xl p-3 cursor-pointer transition-all text-center bg-slate-50 flex items-center justify-center gap-2 text-slate-400">
+                          {editSketchPreview || editForm.sketchUrl
+                            ? <><RefreshCw size={14} /><span className="text-sm">Replace with new image</span></>
+                            : <><Paperclip size={14} /><span className="text-sm">Click to select image</span></>}
                           <input ref={editFileRef} type="file" accept="image/*" className="hidden" onChange={handleEditSketchChange} />
                         </div>
                       </div>
@@ -1643,8 +1607,8 @@ export default function LineLayoutPage() {
                       </div>
                     </div>
                     <button type="submit" disabled={editSaving || editUploading}
-                      className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-3 rounded-xl text-base uppercase tracking-widest transition-all">
-                      {editUploading ? "Uploading image..." : editSaving ? "Updating..." : "✓ Update Header"}
+                      className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-3 rounded-xl text-base uppercase tracking-widest transition-all flex items-center justify-center gap-2">
+                      <Check size={16} />{editUploading ? "Uploading image..." : editSaving ? "Updating..." : "Update Header"}
                     </button>
                   </form>
                 </div>
@@ -1666,7 +1630,9 @@ export default function LineLayoutPage() {
                           options={loadingPNames ? [] : processNames} placeholder={loadingPNames ? "Loading..." : "— Select Process —"} />
                       </div>
                       <button type="button" onClick={() => setShowAddPName(true)} title="Add new process name"
-                        className="px-3 py-3 bg-blue-50 border border-blue-300 hover:bg-blue-100 text-blue-600 rounded-lg text-base font-bold transition-all shrink-0">+</button>
+                        className="px-3 py-3 bg-blue-50 border border-blue-300 hover:bg-blue-100 text-blue-600 rounded-lg transition-all shrink-0">
+                        <Plus size={18} />
+                      </button>
                     </div>
                   </LField>
                   <LField label="Machine Type">
@@ -1678,8 +1644,8 @@ export default function LineLayoutPage() {
                     return <div className="rounded-lg px-4 py-3 border-l-4 text-base font-bold" style={{ background: c.bg, borderLeftColor: c.accent, color: c.text }}>{pForm.machineType}</div>;
                   })()}
                   <button onClick={openPicker} disabled={addingProcess || !pForm.processName || !pForm.machineType}
-                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-3.5 rounded-xl text-base uppercase tracking-wider transition-all shadow-sm">
-                    {addingProcess ? "Adding..." : pForm.machineType === "HELPER" ? "+ Add HELPER" : "+ Select Serial & Add"}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-3.5 rounded-xl text-base uppercase tracking-wider transition-all shadow-sm flex items-center justify-center gap-2">
+                    <Plus size={18} />{addingProcess ? "Adding..." : pForm.machineType === "HELPER" ? "Add HELPER" : "Select Serial & Add"}
                   </button>
                 </div>
               )}
@@ -1717,9 +1683,13 @@ export default function LineLayoutPage() {
                                 <button onClick={() => setEditingProcess({
                                   _id: p._id, serialNo: p.serialNo, processName: p.processName,
                                   machineType: p.machineType, originalMachineType: p.machineType, originalMachines: p.machines || [],
-                                })} className="px-2.5 py-1 rounded-lg text-sm font-bold text-amber-600 border border-amber-200 hover:bg-amber-50 transition-all bg-white">✏️</button>
+                                })} className="p-1.5 rounded-lg text-amber-600 border border-amber-200 hover:bg-amber-50 transition-all bg-white">
+                                  <Pencil size={14} />
+                                </button>
                                 <button onClick={() => handleWasteProcess(p._id, currentLayout.floor)}
-                                  className="px-2.5 py-1 rounded-lg text-sm font-bold text-red-600 border border-red-200 hover:bg-red-50 transition-all bg-white">✕</button>
+                                  className="p-1.5 rounded-lg text-red-600 border border-red-200 hover:bg-red-50 transition-all bg-white">
+                                  <X size={14} />
+                                </button>
                               </div>
                             </div>
                           </div>
@@ -1740,10 +1710,10 @@ export default function LineLayoutPage() {
                 </div>
                 <div className="flex gap-2 text-sm">
                   {[
-                    { l:"Buyer", v: currentLayout.buyer,                                                   c:"text-blue-700"    },
+                    { l:"Buyer", v: currentLayout.buyer, c:"text-blue-700" },
                     { l:"1Hr",   v: calcTargets(currentLayout.smv, currentLayout.planEfficiency, currentLayout.operator, currentLayout.helper, currentLayout.seamSealing, currentLayout.workingHours).oneHourTarget, c:"text-emerald-700" },
-                    { l:"Daily", v: calcTargets(currentLayout.smv, currentLayout.planEfficiency, currentLayout.operator, currentLayout.helper, currentLayout.seamSealing, currentLayout.workingHours).dailyTarget,   c:"text-violet-700"  },
-                    { l:"MP",    v: calcTargets(currentLayout.smv, currentLayout.planEfficiency, currentLayout.operator, currentLayout.helper, currentLayout.seamSealing, currentLayout.workingHours).manpower,      c:"text-amber-700"   },
+                    { l:"Daily", v: calcTargets(currentLayout.smv, currentLayout.planEfficiency, currentLayout.operator, currentLayout.helper, currentLayout.seamSealing, currentLayout.workingHours).dailyTarget, c:"text-violet-700" },
+                    { l:"MP",    v: calcTargets(currentLayout.smv, currentLayout.planEfficiency, currentLayout.operator, currentLayout.helper, currentLayout.seamSealing, currentLayout.workingHours).manpower, c:"text-amber-700" },
                   ].map(({ l, v, c }) => (
                     <span key={l} className="bg-white border border-slate-200 px-3 py-1 rounded-full">
                       <span className="text-slate-400">{l}: </span>
@@ -1793,7 +1763,7 @@ function LSelect({ value, onChange, options, placeholder, renderOption }) {
         <option value="">{placeholder}</option>
         {options.map((o) => <option key={o} value={o}>{renderOption ? renderOption(o) : o}</option>)}
       </select>
-      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">▾</span>
+      <ChevronDown size={14} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
     </div>
   );
 }

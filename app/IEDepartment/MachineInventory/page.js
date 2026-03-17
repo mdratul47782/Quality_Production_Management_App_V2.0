@@ -69,7 +69,7 @@ export default function Page() {
           <div className="flex items-center gap-3">
             <div className="h-7 w-1 bg-cyan-400 rounded-full" />
             <div>
-              <p className="text-[10px] tracking-[0.3em] text-cyan-400 uppercase font-mono">IE Department</p>
+              <p className="text-[10px] tracking-[0.3em] text-cyan-400 uppercase font-mono">Maintenance Department</p>
               <h1 className="text-xl font-bold text-white tracking-tight leading-tight">Machine Inventory</h1>
             </div>
           </div>
