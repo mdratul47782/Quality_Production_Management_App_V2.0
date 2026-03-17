@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { useAuth } from "@/app/hooks/useAuth";
 import { Search, Trash2, Save } from "lucide-react";
-import ImageVideoLink from "../LineInfoRegisterComponents/ImageVideoLink";
+import ImageVideoLink from "./ImageVideoLink";
 const buyers = [
   "Decathlon - knit",
   "Decathlon - woven",
