@@ -15,10 +15,27 @@ import {
   BarChart2,
   Table2,
   MonitorCloud,
-  HelpCircle,
   GitCompare,
+  PanelLeftRightDashed,
+  Wrench,
 } from "lucide-react";
 
+// ── Excel SVG Icon ─────────────────────────────────────────────────────────
+function ExcelIcon({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <rect x="2" y="3" width="14" height="18" rx="2" fill="#1D6F42" />
+      <rect x="10" y="3" width="12" height="18" rx="2" fill="#21A366" />
+      <rect x="9" y="3" width="7" height="18" rx="1" fill="#107C41" />
+      <path d="M5.5 8.5L8.5 15.5M8.5 8.5L5.5 15.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="12" y1="8" x2="19" y2="8" stroke="white" strokeWidth="1" strokeLinecap="round" opacity="0.8" />
+      <line x1="12" y1="11" x2="19" y2="11" stroke="white" strokeWidth="1" strokeLinecap="round" opacity="0.8" />
+      <line x1="12" y1="14" x2="19" y2="14" stroke="white" strokeWidth="1" strokeLinecap="round" opacity="0.8" />
+    </svg>
+  );
+}
+
+// ── Info Pill ──────────────────────────────────────────────────────────────
 function InfoPill({ label, value }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/8 px-3 py-1 text-[11px] font-medium text-white/90 backdrop-blur">
@@ -28,62 +45,41 @@ function InfoPill({ label, value }) {
   );
 }
 
+// ── Compact Module Tile ────────────────────────────────────────────────────
 function Tile({ href, icon: Icon, title, desc, tone = "sky" }) {
   const toneMap = {
-    sky: "from-sky-500/14 to-sky-500/5 border-sky-400/25 hover:border-sky-300/50",
-    emerald:
-      "from-emerald-500/14 to-emerald-500/5 border-emerald-400/25 hover:border-emerald-300/50",
-    amber:
-      "from-amber-500/14 to-amber-500/5 border-amber-400/25 hover:border-amber-300/50",
-    violet:
-      "from-violet-500/14 to-violet-500/5 border-violet-400/25 hover:border-violet-300/50",
-    rose: "from-rose-500/14 to-rose-500/5 border-rose-400/25 hover:border-rose-300/50",
-    slate:
-      "from-slate-400/14 to-slate-400/5 border-slate-300/20 hover:border-slate-200/40",
+    sky:     "from-sky-500/10 to-sky-500/3 border-sky-400/20 hover:border-sky-300/40",
+    emerald: "from-emerald-500/10 to-emerald-500/3 border-emerald-400/20 hover:border-emerald-300/40",
+    amber:   "from-amber-500/10 to-amber-500/3 border-amber-400/20 hover:border-amber-300/40",
+    violet:  "from-violet-500/10 to-violet-500/3 border-violet-400/20 hover:border-violet-300/40",
+    rose:    "from-rose-500/10 to-rose-500/3 border-rose-400/20 hover:border-rose-300/40",
+    slate:   "from-slate-400/10 to-slate-400/3 border-slate-300/15 hover:border-slate-200/35",
+    green:   "from-green-500/10 to-green-500/3 border-green-400/20 hover:border-green-300/40",
+    orange:  "from-orange-500/10 to-orange-500/3 border-orange-400/20 hover:border-orange-300/40",
   };
 
   return (
     <Link
       href={href}
-      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br ${toneMap[tone]} p-4 shadow-[0_10px_30px_rgba(0,0,0,0.22)] transition hover:-translate-y-0.5`}
+      className={`group relative overflow-hidden rounded-xl border bg-gradient-to-br ${toneMap[tone]} p-3 transition-all hover:-translate-y-0.5`}
     >
-      <div className="pointer-events-none absolute -right-16 -top-16 h-40 w-40 rounded-full bg-white/5 blur-2xl" />
-      <div className="flex items-start gap-3">
-        <div className="grid h-10 w-10 place-items-center rounded-xl border border-white/12 bg-white/10 text-white shadow-sm">
-          <Icon size={18} />
+      <div className="flex items-start gap-2.5">
+        <div className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-lg border border-white/10 bg-white/8 text-white">
+          <Icon size={14} />
         </div>
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate text-sm font-semibold text-white">
-              {title}
-            </h3>
-            <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-white/70 opacity-0 transition group-hover:opacity-100">
-              Open <ArrowRight size={14} />
-            </span>
+          <div className="flex items-center gap-1">
+            <h3 className="truncate text-[11px] font-semibold text-white leading-tight">{title}</h3>
+            <ArrowRight size={10} className="ml-auto text-white/40 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
           </div>
-          <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-white/70">
-            {desc}
-          </p>
+          <p className="mt-0.5 line-clamp-1 text-[10px] text-white/45">{desc}</p>
         </div>
       </div>
     </Link>
   );
 }
 
-function SvgCard({ src, title }) {
-  return (
-    <div className="relative overflow-hidden rounded-2xl border border-dashed border-white/20 bg-white/5">
-      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/5 blur-2xl" />
-      <div className="relative aspect-[4/3] w-full">
-        <Image src={src} alt="Images" fill className="object-contain p-4" />
-      </div>
-      <div className="px-3 pb-2">
-        <p className="text-[11px] font-semibold text-white/80">{title}</p>
-      </div>
-    </div>
-  );
-}
-
+// ── Main Page ──────────────────────────────────────────────────────────────
 export default function HomePage() {
   const { auth } = useAuth();
 
@@ -96,91 +92,77 @@ export default function HomePage() {
     [auth]
   );
   const building = useMemo(
-    () =>
-      auth?.assigned_building ||
-      auth?.user?.assigned_building ||
-      auth?.building ||
-      "",
+    () => auth?.assigned_building || auth?.user?.assigned_building || auth?.building || "",
     [auth]
   );
 
-  const heroSvgs = [
-    { src: "/undraw_presentation_4ik4.svg" },
-    { src: "/undraw_factory_4d61.svg" },
-    { src: "/undraw_business-plan_wv9q.svg" },
-  ];
-
   return (
-    <main className="min-h-screen bg-[#070A12] text-white pl-14">
-      {/* Ambient background */}
+    <main className="h-screen overflow-hidden bg-[#070A12] text-white pl-14 flex flex-col">
+
+      {/* ── Ambient background ── */}
       <div className="pointer-events-none fixed inset-0 -z-10">
-        <div className="absolute -top-24 left-[-10%] h-[520px] w-[520px] rounded-full bg-emerald-500/15 blur-[90px]" />
-        <div className="absolute -top-28 right-[-12%] h-[560px] w-[560px] rounded-full bg-sky-500/15 blur-[90px]" />
-        <div className="absolute bottom-[-22%] left-[20%] h-[520px] w-[520px] rounded-full bg-violet-500/12 blur-[90px]" />
-        <div className="absolute inset-0 bg-[radial-gradient(1200px_600px_at_50%_-10%,rgba(255,255,255,0.08),transparent)]" />
-        <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:48px_48px]" />
+        <div className="absolute -top-24 left-[-10%] h-[480px] w-[480px] rounded-full bg-emerald-500/12 blur-[80px]" />
+        <div className="absolute -top-28 right-[-12%] h-[500px] w-[500px] rounded-full bg-sky-500/12 blur-[80px]" />
+        <div className="absolute bottom-[-20%] left-[20%] h-[480px] w-[480px] rounded-full bg-violet-500/10 blur-[80px]" />
+        <div className="absolute inset-0 opacity-[0.05] [background-image:linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px)] [background-size:48px_48px]" />
       </div>
 
-      {/* Top bar */}
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-[#070A12]/70 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+      {/* ── Header ── */}
+      <header className="shrink-0 border-b border-white/10 bg-[#070A12]/70 backdrop-blur z-30">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-2.5">
           <div className="flex items-center gap-3">
-            {/* HKD Logo */}
-            <div className="h-10 w-10 rounded-xl bg-white border border-white/15 flex items-center justify-center overflow-hidden shadow-sm">
+            <div className="h-9 w-9 rounded-xl bg-white border border-white/15 flex items-center justify-center overflow-hidden shadow-sm">
               <Image
                 src="/HKD_LOGO.png"
                 alt="HKD Outdoor Innovations Ltd."
-                width={34}
-                height={34}
+                width={30}
+                height={30}
                 className="object-contain"
                 priority
               />
             </div>
-
             <div className="leading-tight">
-              <p className="text-[12px] font-semibold text-white/95">
-                HKD Outdoor Innovations Ltd.
-              </p>
-              <p className="text-[11px] text-white/55">
-                Production & Quality Management System
-              </p>
+              <p className="text-[12px] font-semibold text-white/95">HKD Outdoor Innovations Ltd.</p>
+              <p className="text-[10px] text-white/50">Production & Quality Management System</p>
             </div>
           </div>
 
-          {/* SignInOut + pills */}
           <div className="hidden items-center gap-2 md:flex">
-            <div className="-mt-3 origin-right scale-[0.78]">
+            <div className="-mt-2 origin-right scale-[0.75]">
               <SignInOut />
             </div>
-
             <InfoPill label="Factory" value={factory} />
             <InfoPill label="Floor" value={building} />
-            {/* <InfoPill label="User" value={userName} /> */}
           </div>
 
-          <div className="md:hidden flex items-center gap-2">
+          <div className="md:hidden">
             <Link
               href="/user-manual"
-              className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2 text-[12px] font-semibold text-white/90"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/10 px-3 py-1.5 text-[11px] font-semibold text-white/90"
             >
-              <BookOpen size={16} />
-              Manual
+              <BookOpen size={14} /> Manual
             </Link>
           </div>
         </div>
       </header>
 
-      {/* Content */}
-      <section className="mx-auto max-w-6xl px-4 py-7 md:py-10">
-        {/* Hero */}
-        <div className="grid grid-cols-1 items-center gap-6 md:grid-cols-2">
-          <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/70">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+      {/* ── Page body ── */}
+      <div className="flex-1 overflow-hidden flex flex-col mx-auto w-full max-w-7xl px-5 py-5 gap-4">
+
+        {/* ══ HERO ROW ══════════════════════════════════════════════════════
+            Left  → hero text + CTA buttons
+            Right → factory SVG image, no border, no card, just floating
+        ════════════════════════════════════════════════════════════════════ */}
+        <div className="grid grid-cols-2 gap-8 items-center shrink-0">
+
+          {/* LEFT — Hero text */}
+          <div className="flex flex-col gap-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] text-white/60 w-fit">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
               Live dashboards • Fast entry • Clean tracking
             </div>
 
-            <h1 className="text-2xl font-semibold leading-tight md:text-4xl">
+            <h1 className="text-[26px] font-bold leading-tight">
               Your daily{" "}
               <span className="bg-gradient-to-r from-emerald-300 to-sky-300 bg-clip-text text-transparent">
                 PRODUCTION & QUALITY
@@ -188,127 +170,87 @@ export default function HomePage() {
               control center.
             </h1>
 
-            <p className="max-w-xl text-[13px] leading-relaxed text-white/70 md:text-[14px]">
-              Open modules quickly from the tiles. Keep Buyer/Style/Color
-              consistent, track hourly inspections, and manage media for each
-              style.
+            <p className="text-[12px] leading-relaxed text-white/60 max-w-sm">
+              Open modules from the tiles below. Track hourly production, quality inspections,
+              machine inventory, and line layouts — all in one system.
             </p>
 
             <div className="flex flex-wrap gap-2 pt-1">
               <Link
                 href="/floor-dashboard"
-                className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-4 py-2.5 text-[12px] font-semibold text-emerald-950 shadow-[0_14px_40px_rgba(16,185,129,0.25)] hover:bg-emerald-400"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-500 px-3.5 py-2 text-[12px] font-semibold text-emerald-950 shadow-[0_8px_24px_rgba(16,185,129,0.25)] hover:bg-emerald-400 transition-colors"
               >
-                <MonitorCloud size={16} />
-                Open Floor Dashboard
+                <MonitorCloud size={14} />
+                Floor Dashboard
               </Link>
-
               <Link
                 href="/ProductionInput"
-                className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-2.5 text-[12px] font-semibold text-white/90 hover:bg-white/15"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/8 px-3.5 py-2 text-[12px] font-semibold text-white/85 hover:bg-white/14 transition-colors"
               >
-                <ClipboardList size={16} />
-                Production Input Page
+                <ClipboardList size={14} />
+                Production Input
               </Link>
-
               <Link
                 href="/user-manual"
-                className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-4 py-2.5 text-[12px] font-semibold text-white/90 hover:bg-white/15"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/8 px-3.5 py-2 text-[12px] font-semibold text-white/85 hover:bg-white/14 transition-colors"
               >
-                <BookOpen size={16} />
+                <BookOpen size={14} />
                 User Manual
               </Link>
             </div>
 
-            <div className="mt-3 flex flex-wrap gap-2 md:hidden">
+            {/* Mobile pills */}
+            <div className="flex flex-wrap gap-2 md:hidden mt-1">
               <InfoPill label="User" value={userName} />
               <InfoPill label="Factory" value={factory} />
               <InfoPill label="Floor" value={building} />
             </div>
           </div>
 
-          {/* 3 SVGs */}
-          <div className="relative">
-            <div className="relative overflow-hidden rounded-3xl border border-white/12 bg-white/5 p-4 shadow-[0_18px_60px_rgba(0,0,0,0.35)]">
-              <div className="pointer-events-none absolute -right-24 -top-24 h-64 w-64 rounded-full bg-sky-500/10 blur-3xl" />
-              <div className="pointer-events-none absolute -left-24 -bottom-24 h-64 w-64 rounded-full bg-emerald-500/10 blur-3xl" />
-
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                {heroSvgs.map((s) => (
-                  <SvgCard key={s.src} src={s.src} title={s.title} />
-                ))}
-              </div>
-            </div>
+          {/* RIGHT — Factory SVG, completely borderless, just floating */}
+          <div className="relative flex items-center justify-center h-[220px]">
+            <Image
+              src="/undraw_factory_4d61.svg"
+              alt="Factory"
+              fill
+              className="object-contain"
+              priority
+            />
           </div>
         </div>
 
-        {/* Tiles */}
-        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <Tile
-            href="/floor-dashboard"
-            icon={MonitorCloud}
-            title="Floor Dashboard"
-            desc="Line-wise view of performance, quality & production."
-            tone="sky"
-          />
-          <Tile
-            href="/floor-summary"
-            icon={BarChart2}
-            title="Floor Summary"
-            desc="Day summary charts & comparisons (building/line)."
-            tone="violet"
-          />
-
-          {/* ✅ NEW: floor-compare */}
-          <Tile
-            href="/floor-compare"
-            icon={GitCompare}
-            title="Floor Compare"
-            desc="Compare floors/lines side-by-side for quick decisions."
-            tone="slate"
-          />
-
-          <Tile
-            href="/ProductionInput"
-            icon={Activity}
-            title="Production Input"
-            desc="Hourly production entry & target tracking."
-            tone="emerald"
-          />
-          <Tile
-            href="/QualityInput"
-            icon={ClipboardList}
-            title="Quality Input"
-            desc="Hourly inspection entry with defects."
-            tone="amber"
-          />
-          <Tile
-            href="/QualitySummaryTable"
-            icon={Table2}
-            title="Quality Summary Table"
-            desc="Table view of hourly quality, totals, and defects."
-            tone="slate"
-          />
-          <Tile
-            href="/style-media-register"
-            icon={ImageIcon}
-            title="Style Media Register"
-            desc="Buyer/Style/Color media reference (image/video)."
-            tone="rose"
-          />
+        {/* ── Divider ── */}
+        <div className="flex items-center gap-3 shrink-0">
+          <div className="h-px flex-1 bg-white/7" />
+          <span className="text-[9px] font-bold tracking-widest uppercase text-white/25">All Modules</span>
+          <div className="h-px flex-1 bg-white/7" />
         </div>
-      </section>
 
-      <footer className="border-t border-white/10 bg-[#070A12]/60">
-        <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-6 md:flex-row md:items-center md:justify-between">
-          <p className="text-[11px] text-white/55">
+        {/* ══ TILES GRID ════════════════════════════════════════════════════ */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5 flex-1 content-start">
+          <Tile href="/floor-dashboard"               icon={MonitorCloud}         title="Floor Dashboard"   desc="Live line performance"     tone="sky"     />
+          <Tile href="/floor-summary"                 icon={BarChart2}            title="Floor Summary"     desc="Day charts & comparisons"  tone="violet"  />
+          <Tile href="/floor-compare"                 icon={GitCompare}           title="Floor Compare"     desc="Side-by-side floors"       tone="slate"   />
+          <Tile href="/ProductionInput"               icon={Activity}             title="Production Input"  desc="Hourly production entry"   tone="emerald" />
+          <Tile href="/QualityInput"                  icon={ClipboardList}        title="Quality Input"     desc="Inspection & defects"      tone="amber"   />
+          <Tile href="/QualitySummaryTable"           icon={Table2}               title="Quality Summary"   desc="Hourly quality totals"     tone="slate"   />
+          <Tile href="/style-media-register"          icon={ImageIcon}            title="Style Media"       desc="Buyer/Style/Color media"   tone="rose"    />
+          <Tile href="/IEDepartment/MachineInventory" icon={ExcelIcon}            title="Machine Inventory" desc="Machine register & export" tone="green"   />
+          <Tile href="/IEDepartment/LineLayout"       icon={PanelLeftRightDashed} title="Line Layout"       desc="IE dept line plans"        tone="violet"  />
+          <Tile href="/IEDepartment/MachineInventory" icon={Wrench}               title="Maintenance"       desc="Repair & work orders"      tone="orange"  />
+        </div>
+
+        {/* ── Footer strip ── */}
+        <div className="shrink-0 flex items-center justify-between border-t border-white/6 pt-2">
+          <p className="text-[10px] text-white/25">
             © {new Date().getFullYear()} HKD Outdoor Innovations Ltd.
           </p>
-          <p className="text-[11px] text-white/55">
-            Built for factory floor visibility • Quality • Production
+          <p className="text-[10px] text-white/25">
+            Floor visibility • Quality • Production
           </p>
         </div>
-      </footer>
+
+      </div>
     </main>
   );
 }
