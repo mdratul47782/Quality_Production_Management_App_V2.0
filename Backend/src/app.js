@@ -6,13 +6,13 @@ const morgan = require('morgan');
 const compression = require('compression');
 
 const authRoutes = require('./routes/auth.routes');
-
+const contactRoutes = require('./routes/contact.routes');
 const app = express();
 
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: 'http://localhost:3000', // Next.js default port
+  origin: 'http://localhost:3000', // Next.js default port 
   credentials: true,
 }));
 app.use(morgan('dev'));
@@ -22,7 +22,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.use('/api/auth', authRoutes);
-
+app.use('/api/contact', contactRoutes);
 // Health check route
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', message: 'Server is running' });
