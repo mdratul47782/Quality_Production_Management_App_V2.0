@@ -23,7 +23,12 @@ export async function POST(request) {
       resource_type: "image",
     });
 
-    return NextResponse.json({ success: true, url: result.secure_url });
+    // ← added publicId to response
+    return NextResponse.json({
+      success:  true,
+      url:      result.secure_url,
+      publicId: result.public_id,
+    });
   } catch (err) {
     return NextResponse.json({ success: false, message: err?.message }, { status: 500 });
   }

@@ -34,6 +34,7 @@ const lineLayoutSchema = new mongoose.Schema(
     dailyTarget:    { type: Number, default: 0 },
     sketchUrl:      { type: String, default: "" },
     processes:      { type: [processEntrySchema], default: [] },
+    sketchPublicId: { type: String, default: "" }
   },
   { timestamps: true }
 );

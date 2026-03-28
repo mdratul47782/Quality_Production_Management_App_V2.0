@@ -1,8 +1,25 @@
 // app/api/line-layouts/[id]/route.js
-import { NextResponse } from "next/server";
+import { NextResponse }    from "next/server";
 import { dbConnect }       from "@/services/mongo";
 import { lineLayoutModel } from "@/models/lineLayout-model";
 import { machineModel }    from "@/models/machine-model";
+import { v2 as cloudinary } from "cloudinary";   // ← added
+
+cloudinary.config({
+  cloud_name:  process.env.CLOUDINARY_CLOUD_NAME,
+  api_key:     process.env.CLOUDINARY_API_KEY,
+  api_secret:  process.env.CLOUDINARY_API_SECRET,
+});
+
+// ── Helper: destroy a Cloudinary image safely ─────────────────────────────────
+async function destroyCloudinaryImage(publicId) {
+  if (!publicId) return;
+  try {
+    await cloudinary.uploader.destroy(publicId);
+  } catch (e) {
+    console.warn("Cloudinary destroy warning:", e.message);
+  }
+}
 
 // ── Helper: mark machine units Running / Idle in inventory ────────────────────
 async function updateMachineStatuses(entries, newStatus, floorOverride = null) {
@@ -90,6 +107,9 @@ export async function DELETE(request, { params }) {
         );
       }
     }
+
+    // ── Delete sketch from Cloudinary ─────────────────────────────────────────
+    await destroyCloudinaryImage(layout.sketchPublicId);
 
     await lineLayoutModel.findByIdAndDelete(id);
     return NextResponse.json({ success: true, message: "Layout deleted." });
@@ -213,7 +233,18 @@ export async function PATCH(request, { params }) {
         operator, helper, seamSealing,
         workingHours,
         sketchUrl,
+        sketchPublicId,   // ← added
       } = body;
+
+      // If a brand-new sketch was uploaded, destroy the old one first
+      if (sketchPublicId && layout.sketchPublicId && sketchPublicId !== layout.sketchPublicId) {
+        await destroyCloudinaryImage(layout.sketchPublicId);
+      }
+
+      // If sketch was explicitly cleared, destroy the old one
+      if (sketchUrl === "" && layout.sketchPublicId) {
+        await destroyCloudinaryImage(layout.sketchPublicId);
+      }
 
       const { manpower, oneHourTarget, dailyTarget } = calcTargets(
         smv, planEfficiency, operator, helper, seamSealing, workingHours
@@ -232,7 +263,8 @@ export async function PATCH(request, { params }) {
         manpower,
         oneHourTarget,
         dailyTarget,
-        ...(sketchUrl !== undefined ? { sketchUrl } : {}),
+        ...(sketchUrl      !== undefined ? { sketchUrl }      : {}),
+        ...(sketchPublicId !== undefined ? { sketchPublicId } : {}),   // ← added
       });
 
       await layout.save();

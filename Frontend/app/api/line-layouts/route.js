@@ -14,10 +14,15 @@ function calcTargets(smv, planEfficiency, operator, helper, seamSealing, working
   return { manpower, oneHourTarget, dailyTarget };
 }
 
+// Admin and IE roles can create layouts for any factory/floor.
+// All other roles are scope-restricted to their assigned factory + assigned_building.
+function isUnrestricted(role) {
+  return role === "Admin" || role === "IE";
+}
+
 // GET /api/line-layouts
-// ?factory=K-2&floor=B-3&lineNo=01   → list layouts (existing behaviour)
-// ?serialNumber=SN-001&factory=K-2   → find which layout uses this serial;
-//                                       returns { layout (full, with all processes), matchedProcessId }
+// ?factory=K-2&floor=B-3&lineNo=01   → list layouts
+// ?serialNumber=SN-001&factory=K-2   → find which layout uses this serial
 export async function GET(request) {
   try {
     await dbConnect();
@@ -40,23 +45,18 @@ export async function GET(request) {
             (m) => m.serialNumber && m.serialNumber.toUpperCase() === serialNumber.toUpperCase()
           );
           if (match) {
-            // Return the FULL layout (all processes) + which process id matched
             return NextResponse.json({
               success: true,
-              data: {
-                layout,                          // full layout document including all processes
-                matchedProcessId: String(proc._id), // so the UI can highlight the right one
-              },
+              data: { layout, matchedProcessId: String(proc._id) },
             });
           }
         }
       }
 
-      // Not found in any layout
       return NextResponse.json({ success: true, data: null });
     }
 
-    // ── Existing: list layouts ────────────────────────────────────────────────
+    // ── List layouts ──────────────────────────────────────────────────────────
     const query = {};
     if (factory) query.factory = factory;
     if (floor)   query.floor   = floor;
@@ -70,7 +70,7 @@ export async function GET(request) {
   }
 }
 
-// POST /api/line-layouts  — create new layout
+// POST /api/line-layouts — create new layout
 export async function POST(request) {
   try {
     await dbConnect();
@@ -78,16 +78,58 @@ export async function POST(request) {
     const {
       factory, floor, lineNo, buyer, style, item,
       smv, planEfficiency, operator, helper, seamSealing,
-      workingHours, sketchUrl,
+      workingHours, sketchUrl, sketchPublicId,   // ← added sketchPublicId
+      _authRole, _authFactory, _authBuilding,
     } = body;
 
+    // ── 1. Basic required-field check ─────────────────────────────────────────
     if (!floor || !lineNo || !buyer) {
       return NextResponse.json(
-        { success: false, message: "floor, lineNo, and buyer are required." },
+        { success: false, message: "Floor, Line No and Buyer are required." },
         { status: 400 }
       );
     }
 
+    // ── 2. Scope validation (skip for Admin / IE) ─────────────────────────────
+    if (!isUnrestricted(_authRole)) {
+      if (_authFactory && factory && factory !== _authFactory) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `You are not authorised to create a layout for factory "${factory}". Your assigned factory is "${_authFactory}".`,
+          },
+          { status: 403 }
+        );
+      }
+      if (_authBuilding && floor && floor !== _authBuilding) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: `You are not authorised to create a layout for floor "${floor}". Your assigned building is "${_authBuilding}".`,
+          },
+          { status: 403 }
+        );
+      }
+    }
+
+    // ── 3. One-layout-per-line check ──────────────────────────────────────────
+    const existing = await lineLayoutModel.findOne({
+      factory: factory || "",
+      floor,
+      lineNo,
+    }).lean();
+
+    if (existing) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: `A layout already exists for ${floor} — Line ${lineNo}. Please delete the existing layout before creating a new one.`,
+        },
+        { status: 409 }
+      );
+    }
+
+    // ── 4. Create ─────────────────────────────────────────────────────────────
     const { manpower, oneHourTarget, dailyTarget } = calcTargets(
       smv, planEfficiency, operator, helper, seamSealing, workingHours
     );
@@ -101,10 +143,11 @@ export async function POST(request) {
       helper:         parseInt(helper)           || 0,
       seamSealing:    parseInt(seamSealing)      || 0,
       manpower,
-      workingHours: parseInt(workingHours) || 8,
+      workingHours:   parseInt(workingHours)     || 8,
       oneHourTarget,
       dailyTarget,
-      sketchUrl: sketchUrl || "",
+      sketchUrl:      sketchUrl      || "",
+      sketchPublicId: sketchPublicId || "",   // ← added
       processes: [],
     });
 

@@ -8,6 +8,7 @@ import {
   Pencil, Menu, Plus, ArrowLeft, ChevronUp, ChevronDown,
   GripVertical, AlertTriangle, Factory, Search, RefreshCw,
   Paperclip, Wrench, ChevronRight, LayoutDashboard, Settings,
+  ShieldAlert,
 } from "lucide-react";
 
 const FACTORY_OPTIONS = ["K-2", "K-3", "K-4", "Others"];
@@ -807,17 +808,22 @@ function LayoutGrid({ processes, sketchUrl, onWaste, onSwapSerial, onMoveToSlot,
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function LineLayoutPage() {
   const { auth } = useAuth();
-  const userFactory = auth?.factory ?? "";
-  const isAdmin     = auth?.role === "Admin" || auth?.role === "IE";
+  const userFactory  = auth?.factory          ?? "";
+  const userBuilding = auth?.assigned_building ?? "";
+  const userRole     = auth?.role              ?? "";
+  const isAdmin      = userRole === "Admin" || userRole === "IE";
 
-  const [view, setView]               = useState("list");
   const [filterFactory, setFilterFactory] = useState("");
   const effectiveFactory = isAdmin ? (filterFactory || "") : userFactory;
+  const allowedFloors = isAdmin ? FLOOR_OPTIONS : (userBuilding ? [userBuilding] : FLOOR_OPTIONS);
+
   const [filterFloor, setFilterFloor] = useState("");
   const [filterLine,  setFilterLine]  = useState("");
   const [layouts, setLayouts]         = useState([]);
   const [listLoading, setListLoading] = useState(false);
   const [currentLayout, setCurrentLayout] = useState(null);
+
+  const [view, setView] = useState("list");
 
   const [form, setForm] = useState({
     floor:"", lineNo:"", buyer:"", style:"", item:"",
@@ -853,7 +859,7 @@ export default function LineLayoutPage() {
   const [showEditPicker, setShowEditPicker] = useState(false);
 
   const [toast, setToast] = useState(null);
-  function showToast(type, msg) { setToast({ type, msg }); setTimeout(() => setToast(null), 3000); }
+  function showToast(type, msg) { setToast({ type, msg }); setTimeout(() => setToast(null), 4000); }
 
   const { manpower, oneHourTarget, dailyTarget } = calcTargets(
     form.smv, form.planEfficiency, form.operator, form.helper, form.seamSealing, form.workingHours
@@ -865,6 +871,10 @@ export default function LineLayoutPage() {
   const [deleteTarget,  setDeleteTarget]  = useState(null);
   const [machineFloors, setMachineFloors] = useState({});
   const [deleting,      setDeleting]      = useState(false);
+
+  const scopeWarning = !isAdmin && !userBuilding
+    ? "Your account has no assigned building. Please contact an administrator."
+    : null;
 
   function getAllMachines(layout) {
     const result = [];
@@ -946,31 +956,70 @@ export default function LineLayoutPage() {
     setEditSketchPreview(URL.createObjectURL(file));
   }
 
+  // ── uploadSketch — now returns { url, publicId } ──────────────────────────
   async function uploadSketch(file) {
-    const fd = new FormData(); fd.append("file", file);
-    const res = await fetch("/api/upload", { method: "POST", body: fd });
+    const fd = new FormData();
+    fd.append("file", file);
+    const res  = await fetch("/api/upload", { method: "POST", body: fd });
     const json = await res.json();
-    return json.success ? json.url : "";
+    return json.success
+      ? { url: json.url, publicId: json.publicId }
+      : { url: "", publicId: "" };
   }
 
+  // ── Create layout ─────────────────────────────────────────────────────────
   async function handleCreateLayout(e) {
     e.preventDefault();
-    if (!form.floor || !form.lineNo || !form.buyer) { showToast("error", "Floor, Line No and Buyer are required."); return; }
+    if (!form.floor || !form.lineNo || !form.buyer) {
+      showToast("error", "Floor, Line No and Buyer are required.");
+      return;
+    }
+    if (!isAdmin) {
+      if (userFactory && form.factory && form.factory !== userFactory) {
+        showToast("error", `You can only create layouts for factory "${userFactory}".`);
+        return;
+      }
+      if (userBuilding && form.floor !== userBuilding) {
+        showToast("error", `You can only create layouts for your assigned building: "${userBuilding}".`);
+        return;
+      }
+    }
     setSaving(true);
     try {
-      let sketchUrl = "";
-      if (sketchFile) { setUploading(true); sketchUrl = await uploadSketch(sketchFile); setUploading(false); }
-      const res  = await fetch("/api/line-layouts", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...form, factory: effectiveFactory, manpower, oneHourTarget, dailyTarget, sketchUrl }),
+      let sketchUrl      = "";
+      let sketchPublicId = "";
+      if (sketchFile) {
+        setUploading(true);
+        const uploaded = await uploadSketch(sketchFile);
+        sketchUrl      = uploaded.url;
+        sketchPublicId = uploaded.publicId;
+        setUploading(false);
+      }
+      const res = await fetch("/api/line-layouts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          factory: effectiveFactory,
+          manpower, oneHourTarget, dailyTarget,
+          sketchUrl,
+          sketchPublicId,   // ← added
+          _authRole:     userRole,
+          _authFactory:  userFactory,
+          _authBuilding: userBuilding,
+        }),
       });
       const json = await res.json();
       if (json.success) {
         showToast("success", "Layout created!");
-        setCurrentLayout(json.data); prefillEditForm(json.data);
-        setBuilderTab("process"); setView("builder");
-      } else showToast("error", json.message);
-    } finally { setSaving(false); }
+        setCurrentLayout(json.data);
+        prefillEditForm(json.data);
+        setBuilderTab("process");
+        setView("builder");
+      } else {
+        showToast("error", json.message);
+      }
+    } finally { setSaving(false); setUploading(false); }
   }
 
   function openPicker() {
@@ -1075,29 +1124,63 @@ export default function LineLayoutPage() {
     } finally { setProcEditSaving(false); }
   }
 
+  // ── Update header ─────────────────────────────────────────────────────────
   async function handleUpdateHeader(e) {
     e.preventDefault();
     if (!currentLayout) return;
     setEditSaving(true);
     try {
-      let finalSketchUrl = editForm.sketchUrl;
-      if (editSketchFile) { setEditUploading(true); finalSketchUrl = await uploadSketch(editSketchFile); setEditUploading(false); }
+      let finalSketchUrl      = editForm.sketchUrl;
+      let finalSketchPublicId = currentLayout.sketchPublicId || "";
+
+      if (editSketchFile) {
+        setEditUploading(true);
+        const uploaded      = await uploadSketch(editSketchFile);
+        finalSketchUrl      = uploaded.url;
+        finalSketchPublicId = uploaded.publicId;
+        setEditUploading(false);
+      }
+
+      // Sketch was cleared by user clicking the X button
+      if (!editForm.sketchUrl && !editSketchFile) {
+        finalSketchUrl      = "";
+        finalSketchPublicId = "";
+      }
+
       const { manpower: mp, oneHourTarget: oht, dailyTarget: dt } = calcTargets(
-        editForm.smv, editForm.planEfficiency, editForm.operator, editForm.helper, editForm.seamSealing, editForm.workingHours
+        editForm.smv, editForm.planEfficiency, editForm.operator,
+        editForm.helper, editForm.seamSealing, editForm.workingHours
       );
-      const res  = await fetch(`/api/line-layouts/${currentLayout._id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
+
+      const res = await fetch(`/api/line-layouts/${currentLayout._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "update_header", buyer: editForm.buyer, style: editForm.style,
-          item: editForm.item, smv: editForm.smv, planEfficiency: editForm.planEfficiency,
-          operator: editForm.operator, helper: editForm.helper, seamSealing: editForm.seamSealing,
-          workingHours: editForm.workingHours, sketchUrl: finalSketchUrl,
-          manpower: mp, oneHourTarget: oht, dailyTarget: dt,
+          action:         "update_header",
+          buyer:          editForm.buyer,
+          style:          editForm.style,
+          item:           editForm.item,
+          smv:            editForm.smv,
+          planEfficiency: editForm.planEfficiency,
+          operator:       editForm.operator,
+          helper:         editForm.helper,
+          seamSealing:    editForm.seamSealing,
+          workingHours:   editForm.workingHours,
+          sketchUrl:      finalSketchUrl,
+          sketchPublicId: finalSketchPublicId,   // ← added
+          manpower:       mp,
+          oneHourTarget:  oht,
+          dailyTarget:    dt,
         }),
       });
       const json = await res.json();
-      if (json.success) { setCurrentLayout(json.data); prefillEditForm(json.data); showToast("success", "Header updated!"); }
-      else showToast("error", json.message);
+      if (json.success) {
+        setCurrentLayout(json.data);
+        prefillEditForm(json.data);
+        showToast("success", "Header updated!");
+      } else {
+        showToast("error", json.message);
+      }
     } finally { setEditSaving(false); setEditUploading(false); }
   }
 
@@ -1323,6 +1406,7 @@ export default function LineLayoutPage() {
             ) : (
               <span className="text-base bg-blue-50 border border-blue-200 text-blue-700 px-3 py-2 rounded-lg font-bold flex items-center gap-1.5">
                 <Factory size={15} /> {userFactory || "—"}
+                {userBuilding && <span className="ml-1 text-blue-500">· {userBuilding}</span>}
               </span>
             )}
             {view !== "list" && (
@@ -1331,7 +1415,7 @@ export default function LineLayoutPage() {
               </button>
             )}
             {view === "list" && (
-              <button onClick={() => { setView("form"); setForm({ floor:"", lineNo:"", buyer:"", style:"", item:"", smv:"", planEfficiency:"", operator:"", helper:"", seamSealing:"", workingHours:8 }); setSketchPreview(""); }}
+              <button onClick={() => { setView("form"); setForm({ floor: isAdmin ? "" : (userBuilding || ""), lineNo:"", buyer:"", style:"", item:"", smv:"", planEfficiency:"", operator:"", helper:"", seamSealing:"", workingHours:8 }); setSketchPreview(""); }}
                 className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-base transition-all shadow-sm flex items-center gap-2">
                 <Plus size={16} /> New Layout
               </button>
@@ -1443,8 +1527,40 @@ export default function LineLayoutPage() {
                 <div className="h-1.5 bg-gradient-to-r from-blue-600 via-blue-400 to-violet-500" />
                 <div className="p-8 space-y-5">
                   <h2 className="text-2xl font-black text-slate-900 mb-1">Create New Line Layout</h2>
+
+                  {!isAdmin && (
+                    <div className={`flex items-start gap-3 rounded-xl px-4 py-3 border text-sm
+                      ${scopeWarning
+                        ? "bg-red-50 border-red-200 text-red-700"
+                        : "bg-blue-50 border-blue-200 text-blue-700"}`}>
+                      {scopeWarning
+                        ? <ShieldAlert size={18} className="shrink-0 mt-0.5 text-red-500" />
+                        : <ShieldAlert size={18} className="shrink-0 mt-0.5 text-blue-500" />}
+                      <div>
+                        {scopeWarning
+                          ? <p className="font-bold">{scopeWarning}</p>
+                          : <>
+                              <p className="font-bold">Your scope: <span className="font-black">{userFactory}</span> — <span className="font-black">{userBuilding}</span></p>
+                              <p className="text-blue-600 text-xs mt-0.5">You can only create layouts for your assigned factory and building.</p>
+                            </>}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-4">
-                    <LField label="Floor *"><LSelect value={form.floor} onChange={(v) => setForm((p) => ({ ...p, floor:v }))} options={FLOOR_OPTIONS} placeholder="— Floor —" /></LField>
+                    <LField label="Floor *">
+                      {isAdmin
+                        ? <LSelect value={form.floor} onChange={(v) => setForm((p) => ({ ...p, floor:v }))} options={FLOOR_OPTIONS} placeholder="— Floor —" />
+                        : userBuilding
+                          ? (
+                            <div className="w-full bg-slate-100 border border-slate-300 text-slate-700 rounded-lg px-3 py-3 text-base font-bold flex items-center justify-between">
+                              <span>{userBuilding}</span>
+                              <span className="text-xs text-slate-400 font-normal">locked</span>
+                            </div>
+                          )
+                          : <LSelect value={form.floor} onChange={(v) => setForm((p) => ({ ...p, floor:v }))} options={FLOOR_OPTIONS} placeholder="— Floor —" />
+                      }
+                    </LField>
                     <LField label="Line No *"><LSelect value={form.lineNo} onChange={(v) => setForm((p) => ({ ...p, lineNo:v }))} options={LINE_OPTIONS} placeholder="— Line —" renderOption={(o) => `Line ${o}`} /></LField>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -1502,7 +1618,7 @@ export default function LineLayoutPage() {
                   </LField>
                 </div>
                 <div className="px-8 pb-8">
-                  <button type="submit" disabled={saving || uploading}
+                  <button type="submit" disabled={saving || uploading || !!scopeWarning}
                     className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-black py-4 rounded-xl text-base tracking-widest uppercase transition-all shadow-sm flex items-center justify-center gap-2">
                     {uploading ? "Uploading image..." : saving ? "Creating..." : <><Plus size={18} /> Create Layout</>}
                   </button>
