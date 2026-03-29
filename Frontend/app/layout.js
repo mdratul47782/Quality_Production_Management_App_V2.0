@@ -26,9 +26,6 @@ const poppins = Poppins({
 export const metadata = {
   title: "Updating HKD PRODUCTION APP",
   description: "CREATED BY MD.RATUL",
-  verification: {
-    google: "AN7z4L9HiQdrX-lFrsDr2gAP7uEcLfQfzgwO_r2_-jI",
-  },
 };
 
 export default async function RootLayout({ children }) {
